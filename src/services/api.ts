@@ -1,5 +1,6 @@
 // api.ts
 import { Plant } from "../types/plant";
+import { generateUuid } from "../utils/uuid";
 
 type CreatePlantInput = {
 	name: string;
@@ -12,6 +13,14 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "")
 
 function apiUrl(path: string): string {
 	return `${API_BASE_URL}${path}`;
+}
+
+export function getMoistureEndpoint(uuid: string): string {
+	if (API_BASE_URL) {
+		return apiUrl(`/api/plants/${uuid}/moisture`);
+	}
+
+	return `${window.location.origin}/api/plants/${uuid}/moisture`;
 }
 
 function normalizePlant(input: Partial<Plant> & { id: string; name: string; uuid: string }): Plant {
@@ -55,7 +64,48 @@ let plants: Plant[] = [
 		moisture: 61,
 		lastUpdated: new Date().toISOString(),
 	},
-	// ...add more seed data if you want
+	{
+		id: "3",
+		name: "Lauren's Plant",
+		uuid: "uuid-lauren",
+		moisture: 100,
+		lastUpdated: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
+	},
+	{
+		id: "4",
+		name: "Aashi's Plant",
+		uuid: "uuid-aashi",
+		moisture: 0,
+		lastUpdated: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+	},
+	{
+		id: "5",
+		name: "Rediet's Plant",
+		uuid: "uuid-rediet",
+		moisture: 0,
+		lastUpdated: new Date(Date.now() - 24 * 60 * 1000).toISOString(),
+	},
+	{
+		id: "6",
+		name: "Jess' Plant",
+		uuid: "uuid-jess",
+		moisture: 100,
+		lastUpdated: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
+	},
+	{
+		id: "7",
+		name: "fariha's pathos",
+		uuid: "uuid-fariha",
+		moisture: null,
+		lastUpdated: null,
+	},
+	{
+		id: "8",
+		name: "sleeping beauty",
+		uuid: "uuid-sleeping-beauty",
+		moisture: 0,
+		lastUpdated: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+	},
 ];
 
 export async function fetchPlants(): Promise<Plant[]> {
@@ -85,7 +135,7 @@ export async function createPlant(input: CreatePlantInput): Promise<Plant> {
 
 	await new Promise((r) => setTimeout(r, 200));
 	const plant: Plant = {
-		id: crypto.randomUUID(),
+		id: generateUuid(),
 		name: input.name,
 		uuid: input.uuid,
 		moisture: null,

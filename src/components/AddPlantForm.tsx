@@ -1,5 +1,7 @@
 // AddPlantForm.tsx
 import React, { useState } from "react";
+import { getMoistureEndpoint } from "../services/api";
+import { generateUuid } from "../utils/uuid";
 
 type Props = {
 	onCreate: (data: { name: string; uuid: string }) => Promise<void> | void;
@@ -7,7 +9,7 @@ type Props = {
 
 export const AddPlantForm: React.FC<Props> = ({ onCreate }) => {
 	const [name, setName] = useState("");
-	const [uuid, setUuid] = useState("");
+	const [uuid, setUuid] = useState<string>(() => generateUuid());
 	const [loading, setLoading] = useState(false);
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -17,18 +19,23 @@ export const AddPlantForm: React.FC<Props> = ({ onCreate }) => {
 		try {
 			await onCreate({ name: name.trim(), uuid: uuid.trim() });
 			setName("");
-			setUuid("");
+			setUuid(generateUuid());
 		} finally {
 			setLoading(false);
 		}
+	};
+
+	const handleCopyAddPlantApi = async () => {
+		if (!uuid.trim()) return;
+		await navigator.clipboard.writeText(getMoistureEndpoint(uuid.trim()));
 	};
 
 	return (
 		<form className="add-plant-form" onSubmit={handleSubmit}>
 			<h2 className="add-plant-form__title">Create a plant</h2>
 			<p className="add-plant-form__subtitle">
-				Connect the UUID, and watch its card update as new moisture readings
-				come in.
+				Create a plant, connect the UUID, and watch its card update as new
+				moisture readings come in.
 			</p>
 
 			<div className="add-plant-form__row">
@@ -58,6 +65,15 @@ export const AddPlantForm: React.FC<Props> = ({ onCreate }) => {
 					disabled={loading}
 				>
 					{loading ? "Adding..." : "Add plant"}
+				</button>
+
+				<button
+					type="button"
+					className="add-plant-form__api-btn"
+					onClick={handleCopyAddPlantApi}
+					disabled={!uuid.trim()}
+				>
+					Add plant API
 				</button>
 			</div>
 		</form>

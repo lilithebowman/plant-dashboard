@@ -102,7 +102,23 @@ body {
 	white-space: nowrap;
 }
 
+.add-plant-form__api-btn {
+	padding: 0.6rem 1.1rem;
+	border-radius: 0.5rem;
+	border: 1px solid #4f46e5;
+	background: transparent;
+	color: #e5e7eb;
+	font-weight: 500;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
 .add-plant-form__submit:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.add-plant-form__api-btn:disabled {
 	opacity: 0.6;
 	cursor: default;
 }

@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { Plant } from "../types/plant";
 import { formatTimeSince } from "../utils/time";
-import { fetchPlantSnapshot } from "../services/api";
+import { fetchPlantSnapshot, getMoistureEndpoint } from "../services/api";
 
 type Props = {
 	plant: Plant;
@@ -32,7 +32,7 @@ export const PlantCard: React.FC<Props> = ({ plant }) => {
 	}, [plant.id]);
 
 	const handleCopyApi = async () => {
-		const url = `${window.location.origin}/api/plants/${snapshot.uuid}/moisture`;
+		const url = getMoistureEndpoint(snapshot.uuid);
 		await navigator.clipboard.writeText(url);
 	};
 

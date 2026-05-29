@@ -39,7 +39,7 @@ export const PlantDashboard: React.FC = () => {
 	return (
 		<div className="dashboard">
 			<header className="dashboard__header">
-				<div className="dashboard__brand">Code Pub</div>
+				<div className="dashboard__brand">CODE PUB</div>
 				<h1 className="dashboard__title">Plant Health Dashboard</h1>
 			</header>
 
