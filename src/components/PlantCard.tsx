@@ -1,7 +1,7 @@
 // PlantCard.tsx
 import React, { useEffect, useState } from "react";
 import { Plant } from "../types/plant";
-import { formatTimeSince } from "../utils/time";
+import { formatReadingTime } from "../utils/time";
 import { fetchPlantSnapshot, getMoistureEndpoint } from "../services/api";
 
 type Props = {
@@ -12,17 +12,10 @@ type Props = {
 
 export const PlantCard: React.FC<Props> = ({ plant, onManage, onOpenHistory }) => {
 	const [snapshot, setSnapshot] = useState<Plant>(plant);
-	const [now, setNow] = useState<Date>(new Date());
 
 	useEffect(() => {
 		setSnapshot(plant);
 	}, [plant]);
-
-	// Tick every second so “Updated HH:MM:SS” stays live
-	useEffect(() => {
-		const id = setInterval(() => setNow(new Date()), 1000);
-		return () => clearInterval(id);
-	}, []);
 
 	// Optional: poll backend every N seconds for new moisture
 	useEffect(() => {
@@ -43,7 +36,7 @@ export const PlantCard: React.FC<Props> = ({ plant, onManage, onOpenHistory }) =
 	};
 
 	const updatedLabel = snapshot.lastUpdated
-		? `Updated ${formatTimeSince(snapshot.lastUpdated, now)}`
+		? `Updated ${formatReadingTime(snapshot.lastUpdated)}`
 		: "Waiting for first reading";
 
 	const moistureLabel =

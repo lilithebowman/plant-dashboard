@@ -1,11 +1,12 @@
 // time.ts
-export function formatTimeSince(iso: string | null, now: Date = new Date()): string {
+export function formatReadingTime(iso: string | null): string {
 	if (!iso) return "Waiting for first reading";
-	const then = new Date(iso);
-	const diffMs = now.getTime() - then.getTime();
-	const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
-	const h = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
-	const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
-	const s = String(totalSeconds % 60).padStart(2, "0");
-	return `${h}:${m}:${s}`;
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return "--";
+	return date.toLocaleTimeString([], {
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+		hour12: false,
+	});
 }
