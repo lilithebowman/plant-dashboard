@@ -1,5 +1,5 @@
 // PlantDashboard.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Plant } from "../types/plant";
 import {
 	fetchPlants,
@@ -7,9 +7,36 @@ import {
 	updatePlant,
 	deletePlant,
 	getMoistureEndpoint,
+	submitPlantReading,
 } from "../services/api";
 import { PlantCard } from "./PlantCard";
 import { AddPlantForm } from "./AddPlantForm";
+
+const SERIAL_BAUD_RATE = 115200;
+const USB_SOURCE = "usb-serial";
+
+function normalizeRawValue(rawValue: number): number {
+	return Math.max(0, Math.min(4095, Math.round(rawValue)));
+}
+
+function parseRawValue(line: string): number | null {
+	const trimmed = line.trim();
+	if (!trimmed) return null;
+
+	const plainNumberMatch = trimmed.match(/^(\d{1,4})$/);
+	if (plainNumberMatch) return normalizeRawValue(Number(plainNumberMatch[1]));
+
+	const legacyMatch = trimmed.match(/Raw analog:\s*(\d{1,4})/i);
+	if (legacyMatch) return normalizeRawValue(Number(legacyMatch[1]));
+
+	const rawValueMatch = trimmed.match(/Raw value:\s*(\d{1,4})/i);
+	if (rawValueMatch) return normalizeRawValue(Number(rawValueMatch[1]));
+
+	const jsonMatch = trimmed.match(/"rawValue"\s*:\s*(\d{1,4})/i);
+	if (jsonMatch) return normalizeRawValue(Number(jsonMatch[1]));
+
+	return null;
+}
 
 export const PlantDashboard: React.FC = () => {
 	const [plants, setPlants] = useState<Plant[]>([]);
@@ -21,6 +48,13 @@ export const PlantDashboard: React.FC = () => {
 	const [saving, setSaving] = useState(false);
 	const [deleting, setDeleting] = useState(false);
 	const [detailError, setDetailError] = useState<string | null>(null);
+	const [serialBusy, setSerialBusy] = useState(false);
+	const [usbStatus, setUsbStatus] = useState("");
+	const [activeUsbPlantId, setActiveUsbPlantId] = useState<string | null>(null);
+
+	const serialPortRef = useRef<any | null>(null);
+	const serialReaderRef = useRef<any | null>(null);
+	const serialBufferRef = useRef("");
 
 	useEffect(() => {
 		(async () => {
@@ -51,6 +85,15 @@ export const PlantDashboard: React.FC = () => {
 	const selectedPlant = selectedPlantId
 		? plants.find((plant) => plant.id === selectedPlantId) ?? null
 		: null;
+	const activeUsbPlant = activeUsbPlantId
+		? plants.find((plant) => plant.id === activeUsbPlantId) ?? null
+		: null;
+
+	const hasSerialSupport =
+		typeof navigator !== "undefined" && "serial" in navigator;
+	const selectedPlantHasUsb =
+		Boolean(selectedPlant && selectedPlant.id === activeUsbPlantId) &&
+		Boolean(serialPortRef.current);
 
 	const openManage = (plant: Plant) => {
 		setSelectedPlantId(plant.id);
@@ -63,6 +106,161 @@ export const PlantDashboard: React.FC = () => {
 		if (saving || deleting) return;
 		setSelectedPlantId(null);
 		setDetailError(null);
+	};
+
+	const readSerialLoop = async (port: any, plantId: string) => {
+		const decoder = new TextDecoder();
+
+		while (serialPortRef.current === port && port.readable) {
+			const reader = port.readable.getReader();
+			serialReaderRef.current = reader;
+
+			try {
+				while (true) {
+					const result = await reader.read();
+					if (result.done) break;
+
+					serialBufferRef.current += decoder.decode(result.value, {
+						stream: true,
+					});
+
+					const lines = serialBufferRef.current.split(/\r?\n/);
+					serialBufferRef.current = lines.pop() || "";
+
+					for (const line of lines) {
+						const rawValue = parseRawValue(line);
+						if (rawValue === null) continue;
+
+						try {
+							const updated = await submitPlantReading(
+								plantId,
+								rawValue,
+								USB_SOURCE
+							);
+							setPlants((current) =>
+								current.map((plant) =>
+									plant.id === updated.id ? updated : plant
+								)
+							);
+							setUsbStatus("USB streaming");
+						} catch {
+							setUsbStatus("USB streaming, sync failed");
+						}
+					}
+				}
+			} catch (error) {
+				if ((error as { name?: string })?.name !== "AbortError") {
+					setUsbStatus("USB error");
+				}
+			} finally {
+				if (serialReaderRef.current === reader) {
+					serialReaderRef.current = null;
+				}
+				try {
+					reader.releaseLock();
+				} catch {
+					// Ignore release errors when lock is already gone.
+				}
+			}
+		}
+	};
+
+	const disconnectSerial = async (reason = "user-request") => {
+		const port = serialPortRef.current;
+		const reader = serialReaderRef.current;
+
+		if (!port && !reader) {
+			setActiveUsbPlantId(null);
+			if (reason === "user-request") setUsbStatus("");
+			return;
+		}
+
+		setSerialBusy(true);
+		if (reason === "switch-plant") {
+			setUsbStatus("USB switching");
+		} else if (reason === "user-request") {
+			setUsbStatus("USB disconnecting");
+		}
+
+		serialPortRef.current = null;
+
+		try {
+			if (reader) {
+				try {
+					await reader.cancel();
+				} catch {
+					// Ignore reader cancellation race conditions.
+				}
+			}
+
+			if (port) {
+				try {
+					await port.close();
+				} catch {
+					// Ignore close race conditions.
+				}
+			}
+		} finally {
+			serialReaderRef.current = null;
+			serialBufferRef.current = "";
+			setActiveUsbPlantId(null);
+			setSerialBusy(false);
+			if (reason !== "switch-plant") {
+				setUsbStatus(reason === "user-request" ? "USB disconnected" : "");
+			}
+		}
+	};
+
+	const connectUsbToPlant = async (plant: Plant) => {
+		if (!hasSerialSupport) {
+			setUsbStatus("Web Serial unsupported");
+			return;
+		}
+
+		setSerialBusy(true);
+		try {
+			if (serialPortRef.current) {
+				await disconnectSerial("switch-plant");
+			}
+
+			setUsbStatus("USB selecting");
+			const serialApi = (navigator as any).serial;
+			const port = await serialApi.requestPort();
+			setUsbStatus("USB opening");
+			await port.open({ baudRate: SERIAL_BAUD_RATE });
+
+			serialBufferRef.current = "";
+			serialPortRef.current = port;
+			setActiveUsbPlantId(plant.id);
+			setUsbStatus("USB connected");
+			void readSerialLoop(port, plant.id);
+		} catch (error) {
+			const name = (error as { name?: string })?.name;
+			if (name === "NotFoundError") {
+				setUsbStatus("USB selection cancelled");
+			} else if (name === "NetworkError") {
+				setUsbStatus("USB busy, close serial monitor");
+			} else if (name === "InvalidStateError") {
+				setUsbStatus("USB already open");
+			} else if (name === "SecurityError") {
+				setUsbStatus("USB blocked by browser");
+			} else {
+				setUsbStatus("USB failed");
+			}
+		} finally {
+			setSerialBusy(false);
+		}
+	};
+
+	const handleUsbButtonClick = async () => {
+		if (!selectedPlant || serialBusy) return;
+
+		if (selectedPlantHasUsb) {
+			await disconnectSerial("user-request");
+			return;
+		}
+
+		await connectUsbToPlant(selectedPlant);
 	};
 
 	const handleSave = async (e: React.FormEvent) => {
@@ -95,6 +293,9 @@ export const PlantDashboard: React.FC = () => {
 		setDeleting(true);
 		setDetailError(null);
 		try {
+			if (selectedPlantId === activeUsbPlantId) {
+				await disconnectSerial("delete-plant");
+			}
 			await deletePlant(selectedPlantId);
 			setPlants((prev) => prev.filter((plant) => plant.id !== selectedPlantId));
 			setSelectedPlantId(null);
@@ -105,6 +306,48 @@ export const PlantDashboard: React.FC = () => {
 			setDeleting(false);
 		}
 	};
+
+	useEffect(() => {
+		if (!hasSerialSupport) return;
+		const serialApi = (navigator as any).serial;
+		if (typeof serialApi?.addEventListener !== "function") return;
+
+		const handleDisconnect = () => {
+			if (serialPortRef.current) {
+				void disconnectSerial("device-disconnect");
+			}
+		};
+
+		serialApi.addEventListener("disconnect", handleDisconnect);
+		return () => {
+			serialApi.removeEventListener("disconnect", handleDisconnect);
+		};
+	}, [hasSerialSupport]);
+
+	useEffect(() => {
+		return () => {
+			void disconnectSerial("unmount");
+		};
+	}, []);
+
+	const usbButtonLabel = selectedPlantHasUsb
+		? serialBusy
+			? "Disconnecting..."
+			: "Disconnect USB"
+		: serialBusy
+			? "Connecting..."
+			: activeUsbPlant && selectedPlant && activeUsbPlant.id !== selectedPlant.id
+				? "Move USB here"
+				: "Connect via USB";
+
+	const activeSource = selectedPlantHasUsb
+		? USB_SOURCE
+		: selectedPlant?.source ?? "api";
+
+	const usbHelpText =
+		activeUsbPlant && selectedPlant && activeUsbPlant.id !== selectedPlant.id
+			? `USB is currently attached to ${activeUsbPlant.name}. Connecting here will switch the stream.`
+			: "";
 
 	return (
 		<div className="dashboard">
@@ -180,6 +423,38 @@ export const PlantDashboard: React.FC = () => {
 								</code>
 							</div>
 
+							<div className="transport-panel">
+								<div className="transport-copy">
+									<span className="transport-label">Source</span>
+									<div className="source-options">
+										<div className={`source-option ${activeSource === USB_SOURCE ? "source-option-active" : ""}`}>
+											<div>
+												<strong>USB</strong>
+												<span>Live from this browser</span>
+											</div>
+											{activeSource === USB_SOURCE ? <em>Active</em> : null}
+										</div>
+										<div className={`source-option ${activeSource !== USB_SOURCE ? "source-option-active" : ""}`}>
+											<div>
+												<strong>API</strong>
+												<span>Posted by sensor firmware</span>
+											</div>
+											{activeSource !== USB_SOURCE ? <em>Active</em> : null}
+										</div>
+									</div>
+									{usbHelpText ? <p className="usb-status">{usbHelpText}</p> : null}
+									{usbStatus ? <p className="usb-status">{usbStatus}</p> : null}
+								</div>
+								<button
+									type="button"
+									className="ghost-button usb-button"
+									onClick={handleUsbButtonClick}
+									disabled={serialBusy || !hasSerialSupport}
+								>
+									{usbButtonLabel}
+								</button>
+							</div>
+
 							<div className="modal-field">
 								<div className="modal-field-row">
 									<span>Wet threshold</span>
@@ -215,7 +490,7 @@ export const PlantDashboard: React.FC = () => {
 								</div>
 								<div>
 									<span>Source</span>
-									<strong>{selectedPlant.source ?? "API"}</strong>
+									<strong>{selectedPlant.source ?? "api"}</strong>
 								</div>
 							</div>
 
