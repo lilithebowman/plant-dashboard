@@ -6,11 +6,16 @@ import { fetchPlantSnapshot, getMoistureEndpoint } from "../services/api";
 
 type Props = {
 	plant: Plant;
+	onManage: (plant: Plant) => void;
 };
 
-export const PlantCard: React.FC<Props> = ({ plant }) => {
+export const PlantCard: React.FC<Props> = ({ plant, onManage }) => {
 	const [snapshot, setSnapshot] = useState<Plant>(plant);
 	const [now, setNow] = useState<Date>(new Date());
+
+	useEffect(() => {
+		setSnapshot(plant);
+	}, [plant]);
 
 	// Tick every second so “Updated HH:MM:SS” stays live
 	useEffect(() => {
@@ -45,7 +50,21 @@ export const PlantCard: React.FC<Props> = ({ plant }) => {
 
 	return (
 		<div className="plant-card">
-			<h2 className="plant-card__title">{snapshot.name}</h2>
+			<div className="plant-card__header-row">
+				<div>
+					{snapshot.source ? (
+						<p className="plant-card__source">{snapshot.source.toUpperCase()}</p>
+					) : null}
+					<h2 className="plant-card__title">{snapshot.name}</h2>
+				</div>
+				<button
+					type="button"
+					className="plant-card__edit-btn"
+					onClick={() => onManage(snapshot)}
+				>
+					Manage
+				</button>
+			</div>
 			<p className="plant-card__updated">{updatedLabel}</p>
 
 			<div className="plant-card__moisture">{moistureLabel}</div>

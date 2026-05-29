@@ -7,6 +7,11 @@ type CreatePlantInput = {
 	uuid: string;
 };
 
+type UpdatePlantInput = {
+	name: string;
+	wetThreshold: number;
+};
+
 type ApiReading = {
 	rawValue: number;
 	source: string;
@@ -17,6 +22,7 @@ type ApiReading = {
 type ApiPlant = {
 	id: string;
 	name: string;
+	wetThreshold?: number;
 	latestReading?: ApiReading | null;
 };
 
@@ -51,8 +57,11 @@ function mapApiPlant(input: ApiPlant): Plant {
 		id: input.id,
 		name: input.name,
 		uuid: input.id,
+		wetThreshold: input.wetThreshold ?? 1500,
 		moisture: input.latestReading?.moisturePercent ?? null,
 		lastUpdated: input.latestReading?.receivedAt ?? null,
+		latestRawValue: input.latestReading?.rawValue ?? null,
+		source: input.latestReading?.source ?? null,
 	};
 }
 
@@ -79,6 +88,10 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 	if (!response.ok) {
 		throw new Error(`Request failed: ${response.status} ${response.statusText}`);
+	}
+
+	if (response.status === 204) {
+		return null as T;
 	}
 
 	return (await response.json()) as T;
@@ -123,11 +136,65 @@ export async function createPlant(input: CreatePlantInput): Promise<Plant> {
 		id: normalizedUuid,
 		name: normalizedName,
 		uuid: normalizedUuid,
+		wetThreshold: 1500,
 		moisture: null,
 		lastUpdated: null,
+		latestRawValue: null,
+		source: null,
 	};
 	plantsById[plant.id] = plant;
 	return plant;
+}
+
+export async function updatePlant(
+	plantId: string,
+	updates: UpdatePlantInput
+): Promise<Plant> {
+	const payload = {
+		name: updates.name.trim(),
+		wetThreshold: updates.wetThreshold,
+	};
+
+	if (API_BASE_URL) {
+		const data = await fetchJson<{ plant: ApiPlant }>(
+			apiUrl(`/api/plants/${plantId}`),
+			{
+				method: "PATCH",
+				body: JSON.stringify(payload),
+			}
+		);
+		return mapApiPlant(data.plant);
+	}
+
+	await delay(120);
+	const existing = plantsById[plantId];
+	if (!existing) {
+		throw new Error("Plant not found");
+	}
+
+	const updated: Plant = {
+		...existing,
+		name: payload.name,
+		wetThreshold: payload.wetThreshold,
+	};
+	plantsById[plantId] = updated;
+	return updated;
+}
+
+export async function deletePlant(plantId: string): Promise<void> {
+	if (API_BASE_URL) {
+		await fetchJson<null>(apiUrl(`/api/plants/${plantId}`), {
+			method: "DELETE",
+		});
+		return;
+	}
+
+	await delay(120);
+	if (!plantsById[plantId]) {
+		throw new Error("Plant not found");
+	}
+
+	delete plantsById[plantId];
 }
 
 export async function submitPlantReading(
@@ -156,6 +223,8 @@ export async function submitPlantReading(
 		...existing,
 		moisture: mapRawToPercent(rawValue),
 		lastUpdated: new Date().toISOString(),
+		latestRawValue: rawValue,
+		source,
 	};
 	plantsById[plantId] = updated;
 	return updated;
@@ -178,11 +247,18 @@ export async function fetchPlantSnapshot(
 	await delay(80);
 	const plant = plantsById[plantId];
 	if (!plant) {
-		return { moisture: null, lastUpdated: null };
+		return {
+			moisture: null,
+			lastUpdated: null,
+			latestRawValue: null,
+			source: null,
+		};
 	}
 
 	return {
 		moisture: plant.moisture,
 		lastUpdated: plant.lastUpdated,
+		latestRawValue: plant.latestRawValue,
+		source: plant.source,
 	};
 }
