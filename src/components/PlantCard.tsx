@@ -7,9 +7,10 @@ import { fetchPlantSnapshot, getMoistureEndpoint } from "../services/api";
 type Props = {
 	plant: Plant;
 	onManage: (plant: Plant) => void;
+	onOpenHistory: (plant: Plant) => void;
 };
 
-export const PlantCard: React.FC<Props> = ({ plant, onManage }) => {
+export const PlantCard: React.FC<Props> = ({ plant, onManage, onOpenHistory }) => {
 	const [snapshot, setSnapshot] = useState<Plant>(plant);
 	const [now, setNow] = useState<Date>(new Date());
 
@@ -49,7 +50,18 @@ export const PlantCard: React.FC<Props> = ({ plant, onManage }) => {
 		snapshot.moisture == null ? "--" : `${snapshot.moisture}%`;
 
 	return (
-		<div className="plant-card">
+		<div
+			className="plant-card plant-card--interactive"
+			onClick={() => onOpenHistory(snapshot)}
+			role="button"
+			tabIndex={0}
+			onKeyDown={(event) => {
+				if (event.key === "Enter" || event.key === " ") {
+					event.preventDefault();
+					onOpenHistory(snapshot);
+				}
+			}}
+		>
 			<div className="plant-card__header-row">
 				<div>
 					{snapshot.source ? (
@@ -60,7 +72,10 @@ export const PlantCard: React.FC<Props> = ({ plant, onManage }) => {
 				<button
 					type="button"
 					className="plant-card__edit-btn"
-					onClick={() => onManage(snapshot)}
+					onClick={(event) => {
+						event.stopPropagation();
+						onManage(snapshot);
+					}}
 				>
 					Manage
 				</button>
@@ -73,7 +88,13 @@ export const PlantCard: React.FC<Props> = ({ plant, onManage }) => {
 				<span className="plant-card__snapshot-label">
 					Latest moisture snapshot
 				</span>
-				<button className="plant-card__copy-btn" onClick={handleCopyApi}>
+				<button
+					className="plant-card__copy-btn"
+					onClick={(event) => {
+						event.stopPropagation();
+						void handleCopyApi();
+					}}
+				>
 					Copy API
 				</button>
 			</div>

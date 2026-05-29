@@ -1,6 +1,6 @@
 // PlantDashboard.tsx
 import React, { useEffect, useRef, useState } from "react";
-import { Plant } from "../types/plant";
+import { Plant, PlantReading } from "../types/plant";
 import {
 	fetchPlants,
 	createPlant,
@@ -8,9 +8,11 @@ import {
 	deletePlant,
 	getMoistureEndpoint,
 	submitPlantReading,
+	fetchPlantHistory,
 } from "../services/api";
 import { PlantCard } from "./PlantCard";
 import { AddPlantForm } from "./AddPlantForm";
+import { PlantHistoryDialog } from "./PlantHistoryDialog";
 
 const SERIAL_BAUD_RATE = 115200;
 const USB_SOURCE = "usb-serial";
@@ -48,6 +50,10 @@ export const PlantDashboard: React.FC = () => {
 	const [saving, setSaving] = useState(false);
 	const [deleting, setDeleting] = useState(false);
 	const [detailError, setDetailError] = useState<string | null>(null);
+	const [historyPlant, setHistoryPlant] = useState<Plant | null>(null);
+	const [historyReadings, setHistoryReadings] = useState<PlantReading[]>([]);
+	const [historyLoading, setHistoryLoading] = useState(false);
+	const [historyError, setHistoryError] = useState<string | null>(null);
 	const [serialBusy, setSerialBusy] = useState(false);
 	const [usbStatus, setUsbStatus] = useState("");
 	const [activeUsbPlantId, setActiveUsbPlantId] = useState<string | null>(null);
@@ -100,6 +106,30 @@ export const PlantDashboard: React.FC = () => {
 		setEditName(plant.name);
 		setEditThreshold(plant.wetThreshold);
 		setDetailError(null);
+	};
+
+	const openHistory = async (plant: Plant) => {
+		setHistoryPlant(plant);
+		setHistoryReadings([]);
+		setHistoryLoading(true);
+		setHistoryError(null);
+
+		try {
+			const result = await fetchPlantHistory(plant.id, 60);
+			setHistoryPlant(result.plant);
+			setHistoryReadings(result.readings);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "Unknown error";
+			setHistoryError(`Failed to load history. ${message}`);
+		} finally {
+			setHistoryLoading(false);
+		}
+	};
+
+	const closeHistory = () => {
+		setHistoryPlant(null);
+		setHistoryReadings([]);
+		setHistoryError(null);
 	};
 
 	const closeManage = () => {
@@ -374,11 +404,26 @@ export const PlantDashboard: React.FC = () => {
 				) : (
 					<div className="dashboard__grid">
 						{plants.map((plant) => (
-							<PlantCard key={plant.id} plant={plant} onManage={openManage} />
+							<PlantCard
+								key={plant.id}
+								plant={plant}
+								onManage={openManage}
+								onOpenHistory={openHistory}
+							/>
 						))}
 					</div>
 				)}
 			</main>
+
+			{historyPlant ? (
+				<PlantHistoryDialog
+					plant={historyPlant}
+					readings={historyReadings}
+					loading={historyLoading}
+					error={historyError}
+					onClose={closeHistory}
+				/>
+			) : null}
 
 			{selectedPlant ? (
 				<div className="modal-backdrop" onClick={closeManage} role="presentation">

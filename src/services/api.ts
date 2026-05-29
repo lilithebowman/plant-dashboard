@@ -1,6 +1,5 @@
 // api.ts
-import { Plant } from "../types/plant";
-import { generateUuid } from "../utils/uuid";
+import { Plant, PlantReading } from "../types/plant";
 
 type CreatePlantInput = {
 	name: string;
@@ -42,16 +41,6 @@ export function getMoistureEndpoint(uuid: string): string {
 	return `${window.location.origin}/api/plants/${uuid}/readings`;
 }
 
-function mapRawToPercent(rawValue: number): number {
-	const dryValue = 4095;
-	const wetThreshold = 1500;
-	const clamped = Math.max(0, Math.min(dryValue, Math.round(rawValue)));
-	const range = dryValue - wetThreshold;
-	if (range <= 0) return clamped <= wetThreshold ? 100 : 0;
-	const percent = ((dryValue - clamped) / range) * 100;
-	return Math.max(0, Math.min(100, Number(percent.toFixed(1))));
-}
-
 function mapApiPlant(input: ApiPlant): Plant {
 	return {
 		id: input.id,
@@ -71,10 +60,6 @@ function extractPlantList(payload: { plants?: ApiPlant[] } | ApiPlant[]): ApiPla
 
 function extractPlant(payload: { plant: ApiPlant } | ApiPlant): ApiPlant {
 	return "plant" in payload ? payload.plant : payload;
-}
-
-function delay(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -97,53 +82,24 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 	return (await response.json()) as T;
 }
 
-// In local/mock mode this starts empty and is populated only by API submissions.
-const plantsById: Record<string, Plant> = {};
-
 export async function fetchPlants(): Promise<Plant[]> {
-	if (API_BASE_URL) {
-		const data = await fetchJson<{ plants?: ApiPlant[] } | ApiPlant[]>(
-			apiUrl("/api/plants")
-		);
-		return extractPlantList(data).map(mapApiPlant);
-	}
-
-	await delay(120);
-	return Object.values(plantsById);
+	const data = await fetchJson<{ plants?: ApiPlant[] } | ApiPlant[]>(
+		apiUrl("/api/plants")
+	);
+	return extractPlantList(data).map(mapApiPlant);
 }
 
 export async function createPlant(input: CreatePlantInput): Promise<Plant> {
 	const normalizedName = input.name.trim();
-	const normalizedUuid = input.uuid.trim() || generateUuid();
-
-	if (API_BASE_URL) {
-		const data = await fetchJson<{ plant: ApiPlant } | ApiPlant>(
-			apiUrl("/api/plants"),
-			{
-				method: "POST",
-				body: JSON.stringify({ name: normalizedName, id: normalizedUuid }),
-			}
-		);
-		return mapApiPlant(extractPlant(data));
-	}
-
-	await delay(120);
-	if (plantsById[normalizedUuid]) {
-		throw new Error("Plant UUID already exists");
-	}
-
-	const plant: Plant = {
-		id: normalizedUuid,
-		name: normalizedName,
-		uuid: normalizedUuid,
-		wetThreshold: 1500,
-		moisture: null,
-		lastUpdated: null,
-		latestRawValue: null,
-		source: null,
-	};
-	plantsById[plant.id] = plant;
-	return plant;
+	const normalizedUuid = input.uuid.trim();
+	const data = await fetchJson<{ plant: ApiPlant } | ApiPlant>(
+		apiUrl("/api/plants"),
+		{
+			method: "POST",
+			body: JSON.stringify({ name: normalizedName, id: normalizedUuid }),
+		}
+	);
+	return mapApiPlant(extractPlant(data));
 }
 
 export async function updatePlant(
@@ -155,46 +111,20 @@ export async function updatePlant(
 		wetThreshold: updates.wetThreshold,
 	};
 
-	if (API_BASE_URL) {
-		const data = await fetchJson<{ plant: ApiPlant }>(
-			apiUrl(`/api/plants/${plantId}`),
-			{
-				method: "PATCH",
-				body: JSON.stringify(payload),
-			}
-		);
-		return mapApiPlant(data.plant);
-	}
-
-	await delay(120);
-	const existing = plantsById[plantId];
-	if (!existing) {
-		throw new Error("Plant not found");
-	}
-
-	const updated: Plant = {
-		...existing,
-		name: payload.name,
-		wetThreshold: payload.wetThreshold,
-	};
-	plantsById[plantId] = updated;
-	return updated;
+	const data = await fetchJson<{ plant: ApiPlant }>(
+		apiUrl(`/api/plants/${plantId}`),
+		{
+			method: "PATCH",
+			body: JSON.stringify(payload),
+		}
+	);
+	return mapApiPlant(data.plant);
 }
 
 export async function deletePlant(plantId: string): Promise<void> {
-	if (API_BASE_URL) {
-		await fetchJson<null>(apiUrl(`/api/plants/${plantId}`), {
-			method: "DELETE",
-		});
-		return;
-	}
-
-	await delay(120);
-	if (!plantsById[plantId]) {
-		throw new Error("Plant not found");
-	}
-
-	delete plantsById[plantId];
+	await fetchJson<null>(apiUrl(`/api/plants/${plantId}`), {
+		method: "DELETE",
+	});
 }
 
 export async function submitPlantReading(
@@ -202,63 +132,40 @@ export async function submitPlantReading(
 	rawValue: number,
 	source = "api"
 ): Promise<Plant> {
-	if (API_BASE_URL) {
-		const data = await fetchJson<{ plant: ApiPlant }>(
-			apiUrl(`/api/plants/${plantId}/readings`),
-			{
-				method: "POST",
-				body: JSON.stringify({ rawValue, source }),
-			}
-		);
-		return mapApiPlant(data.plant);
-	}
-
-	await delay(80);
-	const existing = plantsById[plantId];
-	if (!existing) {
-		throw new Error("Plant not found");
-	}
-
-	const updated: Plant = {
-		...existing,
-		moisture: mapRawToPercent(rawValue),
-		lastUpdated: new Date().toISOString(),
-		latestRawValue: rawValue,
-		source,
-	};
-	plantsById[plantId] = updated;
-	return updated;
+	const data = await fetchJson<{ plant: ApiPlant }>(
+		apiUrl(`/api/plants/${plantId}/readings`),
+		{
+			method: "POST",
+			body: JSON.stringify({ rawValue, source }),
+		}
+	);
+	return mapApiPlant(data.plant);
 }
 
 export async function fetchPlantSnapshot(
 	plantId: string
 ): Promise<Partial<Plant>> {
-	if (API_BASE_URL) {
-		const data = await fetchJson<{ plant: ApiPlant } | ApiPlant>(
-			apiUrl(`/api/plants/${plantId}`)
-		);
-		const plant = mapApiPlant(extractPlant(data));
-		return {
-			moisture: plant.moisture,
-			lastUpdated: plant.lastUpdated,
-		};
-	}
-
-	await delay(80);
-	const plant = plantsById[plantId];
-	if (!plant) {
-		return {
-			moisture: null,
-			lastUpdated: null,
-			latestRawValue: null,
-			source: null,
-		};
-	}
-
+	const data = await fetchJson<{ plant: ApiPlant } | ApiPlant>(
+		apiUrl(`/api/plants/${plantId}`)
+	);
+	const plant = mapApiPlant(extractPlant(data));
 	return {
 		moisture: plant.moisture,
 		lastUpdated: plant.lastUpdated,
 		latestRawValue: plant.latestRawValue,
 		source: plant.source,
+	};
+}
+
+export async function fetchPlantHistory(
+	plantId: string,
+	limit = 60
+): Promise<{ plant: Plant; readings: PlantReading[] }> {
+	const data = await fetchJson<{ plant: ApiPlant; readings: ApiReading[] }>(
+		apiUrl(`/api/plants/${plantId}/readings?limit=${limit}`)
+	);
+	return {
+		plant: mapApiPlant(data.plant),
+		readings: data.readings,
 	};
 }

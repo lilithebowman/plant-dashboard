@@ -1,66 +1,96 @@
 # Plant Dashboard
 
-A React + TypeScript + Vite dashboard scaffolded for local development and Ubuntu VPS deployment.
+A React + TypeScript + Vite dashboard with a Node/Express API backed by a local SQLite database file.
 
-## 1) Local development
+The app now supports:
+
+- persistent plants in `data/plants.db`
+- historical moisture readings
+- USB serial posting from the browser
+- sparkline history dialog when clicking a plant card
+
+## Local development
 
 Prerequisites:
 
-- Node.js 20+
-- npm 9+
+- Node.js 24+
+- npm 10+
 
 Steps:
 
-1. Copy environment template:
-   - cp .env.example .env
-2. (Optional) Set VITE_API_BASE_URL in .env to point at your backend.
-   - If left empty, the app uses built-in mock data.
+1. Copy the environment template:
+   - `cp .env.example .env`
+2. Leave `VITE_API_BASE_URL` empty for local development.
+   - Vite proxies `/api` to the local Node server.
 3. Install dependencies:
-   - npm ci
-4. Start dev server:
-   - npm run dev
+   - `npm install`
+4. Start both the API server and Vite dev server:
+   - `npm run dev`
 5. Open:
    - <http://localhost:5173>
 
-## 2) Production build
+Local persistence details:
 
-1. Install dependencies:
-   - npm ci
-2. Build:
-   - npm run build
-3. Test production output locally:
-   - npm run preview
-4. Open:
-   - <http://localhost:4173>
+- SQLite file: `data/plants.db`
+- API server: <http://localhost:3001>
+- Frontend dev server: <http://localhost:5173>
 
-## 3) Deploy on Ubuntu VPS (Nginx static hosting)
+## Production build
+
+Build the frontend bundle:
+
+```bash
+npm run build
+```
+
+Run the Node server in production mode:
+
+```bash
+npm run start
+```
+
+The Node server serves both:
+
+- frontend assets from `dist/`
+- API routes from `/api/*`
+
+Default production port:
+
+- `3001`
+
+## Ubuntu VPS deployment
 
 ### Install runtime tools
 
 ```bash
 sudo apt update
 sudo apt install -y nginx curl
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
 ```
 
-### Build on server
+### Clone and start the app
 
 ```bash
 cd /opt
 sudo git clone <your-repo-url> plant-dashboard
 cd plant-dashboard
-npm ci
+npm install
 cp .env.example .env
-# Optional: edit .env and set VITE_API_BASE_URL
 npm run build
+PORT=3001 npm run start
 ```
 
-### Publish built files
+To keep it running, use a process manager such as `pm2` or a `systemd` service.
+
+Example with pm2:
 
 ```bash
-sudo mkdir -p /var/www/plant-dashboard
-sudo rsync -av --delete dist/ /var/www/plant-dashboard/
+sudo npm install -g pm2
+cd /opt/plant-dashboard
+pm2 start npm --name plant-dashboard -- run start
+pm2 save
+pm2 startup
 ```
 
 ### Configure Nginx
@@ -74,27 +104,44 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### (Recommended) Enable HTTPS
+### Enable HTTPS
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d your-domain.com
 ```
 
-## 4) Deploy with Docker instead
+## Docker deployment
+
+Build and run:
 
 ```bash
 docker compose up -d --build
 ```
 
-This exposes the app on port 8080.
+Container behavior:
 
-## API integration notes
+- serves frontend and API on port `8080`
+- persists SQLite data in a Docker volume mounted at `/app/data`
 
-The frontend expects these endpoints when VITE_API_BASE_URL is set:
+## API routes
 
-- GET /api/plants
-- POST /api/plants
-- GET /api/plants/:id/snapshot
+The frontend uses these API endpoints:
 
-If no API base URL is set, the app runs with in-memory mock data.
+- `GET /api/health`
+- `GET /api/plants`
+- `POST /api/plants`
+- `GET /api/plants/:plantId`
+- `PATCH /api/plants/:plantId`
+- `DELETE /api/plants/:plantId`
+- `POST /api/plants/:plantId/readings`
+- `GET /api/plants/:plantId/readings?limit=60`
+
+## Data model
+
+SQLite tables created automatically on first boot:
+
+- `plants`
+- `readings`
+
+The server stores every reading historically and calculates moisture percentage from raw sensor values using the plant's wet threshold.

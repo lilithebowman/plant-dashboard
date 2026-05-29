@@ -1,4 +1,11 @@
 // types.ts
+export type PlantReading = {
+	rawValue: number;
+	source: string;
+	receivedAt: string;
+	moisturePercent: number | null;
+};
+
 export type Plant = {
 	id: string;
 	name: string;

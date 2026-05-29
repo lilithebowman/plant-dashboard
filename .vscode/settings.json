@@ -1,5 +1,8 @@
 {
 	"chat.tools.terminal.autoApprove": {
-		"npm install": true
+		"npm install": true,
+		"printf": true,
+		"http://127.0.0.1:3001/api/plants/${plantId}/readings": true,
+		"npm exec": true
 	}
 }
