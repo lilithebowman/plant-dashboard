@@ -1,0 +1,152 @@
+/* styles.css */
+
+body {
+	margin: 0;
+	font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	background: #050816;
+	color: #f9fafb;
+}
+
+.dashboard {
+	max-width: 1200px;
+	margin: 0 auto;
+	padding: 2rem 1.5rem 4rem;
+}
+
+.dashboard__header {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin-bottom: 2rem;
+}
+
+.dashboard__brand {
+	font-weight: 600;
+	font-size: 0.9rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #a5b4fc;
+}
+
+.dashboard__title {
+	font-size: 2rem;
+	font-weight: 700;
+}
+
+.add-plant-form {
+	background: rgba(15, 23, 42, 0.9);
+	border-radius: 0.75rem;
+	padding: 1.25rem 1.5rem;
+	margin-bottom: 1.5rem;
+	border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.add-plant-form__title {
+	margin: 0 0 0.25rem;
+	font-size: 1.1rem;
+	font-weight: 600;
+}
+
+.add-plant-form__subtitle {
+	margin: 0 0 1rem;
+	font-size: 0.9rem;
+	color: #9ca3af;
+}
+
+.add-plant-form__row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	align-items: flex-end;
+}
+
+.add-plant-form__field {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 200px;
+}
+
+.add-plant-form__field label {
+	font-size: 0.8rem;
+	margin-bottom: 0.25rem;
+	color: #e5e7eb;
+}
+
+.add-plant-form__field input {
+	border-radius: 0.5rem;
+	border: 1px solid #4b5563;
+	background: #020617;
+	color: #f9fafb;
+	padding: 0.5rem 0.6rem;
+	font-size: 0.9rem;
+}
+
+.add-plant-form__submit {
+	padding: 0.6rem 1.1rem;
+	border-radius: 0.5rem;
+	border: none;
+	background: #4f46e5;
+	color: white;
+	font-weight: 500;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.add-plant-form__submit:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.dashboard__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+	gap: 1rem;
+}
+
+.plant-card {
+	background: radial-gradient(circle at top left, #1d283a, #020617);
+	border-radius: 0.75rem;
+	padding: 1rem;
+	border: 1px solid rgba(148, 163, 184, 0.3);
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+}
+
+.plant-card__title {
+	font-size: 1rem;
+	font-weight: 600;
+}
+
+.plant-card__updated {
+	font-size: 0.8rem;
+	color: #9ca3af;
+}
+
+.plant-card__moisture {
+	font-size: 1.8rem;
+	font-weight: 700;
+	margin-top: 0.4rem;
+}
+
+.plant-card__footer {
+	margin-top: 0.6rem;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	font-size: 0.8rem;
+}
+
+.plant-card__snapshot-label {
+	color: #9ca3af;
+}
+
+.plant-card__copy-btn {
+	border-radius: 999px;
+	border: 1px solid #4f46e5;
+	background: transparent;
+	color: #e5e7eb;
+	padding: 0.25rem 0.7rem;
+	font-size: 0.8rem;
+	cursor: pointer;
+}
