@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { getDb } from "./db.js";
 
 const DEFAULT_WET_THRESHOLD = 1500;
@@ -39,6 +39,23 @@ function sanitizePlantId(plantId) {
 		throw new Error("Plant UUID must be a valid UUID");
 	}
 	return normalized;
+}
+
+function createOwnerToken() {
+	return `${randomUUID()}${randomBytes(16).toString("hex")}`;
+}
+
+function hashToken(token) {
+	return createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+function constantTimeHashEquals(leftHash, rightHash) {
+	const left = Buffer.from(leftHash || "", "hex");
+	const right = Buffer.from(rightHash || "", "hex");
+	if (left.length === 0 || right.length === 0 || left.length !== right.length) {
+		return false;
+	}
+	return timingSafeEqual(left, right);
 }
 
 function sanitizeWetThreshold(wetThreshold = DEFAULT_WET_THRESHOLD) {
@@ -181,6 +198,8 @@ export function createPlant(name, plantId) {
 	const normalizedName = sanitizePlantName(name);
 	const now = new Date().toISOString();
 	const wetThreshold = DEFAULT_WET_THRESHOLD;
+	const ownerToken = createOwnerToken();
+	const ownerTokenHash = hashToken(ownerToken);
 
 	const existing = db.prepare(`SELECT id FROM plants WHERE id = ? LIMIT 1`).get(id);
 	if (existing) {
@@ -192,7 +211,47 @@ export function createPlant(name, plantId) {
 		VALUES (?, ?, ?, ?, ?)
 	`).run(id, normalizedName, wetThreshold, now, now);
 
-	return getPlant(id);
+	db.prepare(`
+		INSERT INTO plant_owner_tokens (plant_id, token_hash, created_at, last_used_at)
+		VALUES (?, ?, ?, ?)
+	`).run(id, ownerTokenHash, now, now);
+
+	return {
+		plant: getPlant(id),
+		creatorToken: ownerToken,
+	};
+}
+
+export function verifyPlantOwnerToken(plantId, providedToken) {
+	const db = getDb();
+	if (!providedToken) {
+		return false;
+	}
+
+	const row = db.prepare(`
+		SELECT token_hash as tokenHash
+		FROM plant_owner_tokens
+		WHERE plant_id = ?
+		LIMIT 1
+	`).get(plantId);
+
+	if (!row?.tokenHash) {
+		return false;
+	}
+
+	const providedHash = hashToken(providedToken);
+	const valid = constantTimeHashEquals(row.tokenHash, providedHash);
+	if (!valid) {
+		return false;
+	}
+
+	db.prepare(`
+		UPDATE plant_owner_tokens
+		SET last_used_at = ?
+		WHERE plant_id = ?
+	`).run(new Date().toISOString(), plantId);
+
+	return true;
 }
 
 export function updatePlant(plantId, updates) {

@@ -136,6 +136,32 @@ The frontend uses these API endpoints:
 - `DELETE /api/plants/:plantId`
 - `POST /api/plants/:plantId/readings`
 - `GET /api/plants/:plantId/readings?limit=60`
+- `POST /api/admin/login`
+- `POST /api/admin/logout`
+- `GET /api/admin/plants`
+- `PATCH /api/admin/plants/:plantId`
+- `DELETE /api/admin/plants/:plantId`
+
+## Ownership and admin auth
+
+Plant create now returns:
+
+- `plant`: the created plant object
+- `creatorToken`: one-time owner token for that plant
+
+The frontend stores this owner token in browser local storage and sends it as a bearer token for plant updates/deletes.
+
+Authorization rules:
+
+- `PATCH /api/plants/:plantId` and `DELETE /api/plants/:plantId` require authorization.
+- Use `Authorization: Bearer <creatorToken>` for plant owner access.
+- Use `X-Admin-Session: <sessionToken>` for admin access.
+
+Admin auth setup:
+
+- set `ADMIN_PASSWORD` to enable admin login
+- optional `ADMIN_USERNAME` (default `admin`)
+- optional `ADMIN_SESSION_TTL_MS` (default 8 hours)
 
 ## Optional workshop mirroring
 

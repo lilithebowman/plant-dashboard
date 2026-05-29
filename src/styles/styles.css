@@ -49,6 +49,48 @@ body {
 	font-weight: 700;
 }
 
+.dashboard__admin {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 0.5rem;
+}
+
+.dashboard__admin-form {
+	display: flex;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.dashboard__admin-form input {
+	border-radius: 0.5rem;
+	border: 1px solid #4b5563;
+	background: #020617;
+	color: #f9fafb;
+	padding: 0.5rem 0.55rem;
+	font-size: 0.85rem;
+	min-width: 150px;
+}
+
+.dashboard__admin-session {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.dashboard__admin-badge {
+	font-size: 0.75rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: #86efac;
+	border: 1px solid rgba(134, 239, 172, 0.35);
+	background: rgba(22, 101, 52, 0.25);
+	border-radius: 999px;
+	padding: 0.2rem 0.6rem;
+}
+
 .dashboard__error {
 	margin: 0 0 1rem;
 	padding: 0.75rem 1rem;

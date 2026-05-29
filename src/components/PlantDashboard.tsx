@@ -1,8 +1,11 @@
 // PlantDashboard.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Plant, PlantReading } from "../types/plant";
 import {
+	adminLogin,
+	adminLogout,
 	fetchPlants,
+	fetchAdminPlants,
 	createPlant,
 	updatePlant,
 	deletePlant,
@@ -57,17 +60,26 @@ export const PlantDashboard: React.FC = () => {
 	const [serialBusy, setSerialBusy] = useState(false);
 	const [usbStatus, setUsbStatus] = useState("");
 	const [activeUsbPlantId, setActiveUsbPlantId] = useState<string | null>(null);
+	const [adminToken, setAdminToken] = useState("");
+	const [adminUsername, setAdminUsername] = useState("");
+	const [adminPassword, setAdminPassword] = useState("");
 
 	const serialPortRef = useRef<any | null>(null);
 	const serialReaderRef = useRef<any | null>(null);
 	const serialBufferRef = useRef("");
 
+	const adminMode = Boolean(adminToken);
+
+	const loadPlants = useCallback(async () => {
+		const data = adminMode ? await fetchAdminPlants(adminToken) : await fetchPlants();
+		setPlants(data);
+		setError(null);
+	}, [adminMode, adminToken]);
+
 	useEffect(() => {
 		(async () => {
 			try {
-				const data = await fetchPlants();
-				setPlants(data);
-				setError(null);
+				await loadPlants();
 			} catch (err) {
 				const message = err instanceof Error ? err.message : "Unknown error";
 				setError(`Failed to load plants. ${message}`);
@@ -75,7 +87,7 @@ export const PlantDashboard: React.FC = () => {
 				setLoading(false);
 			}
 		})();
-	}, []);
+	}, [loadPlants]);
 
 	const handleCreate = async (data: { name: string; uuid: string }) => {
 		try {
@@ -303,6 +315,8 @@ export const PlantDashboard: React.FC = () => {
 			const updated = await updatePlant(selectedPlantId, {
 				name: editName,
 				wetThreshold: editThreshold,
+			}, {
+				adminSessionToken: adminToken || undefined,
 			});
 			setPlants((prev) =>
 				prev.map((plant) => (plant.id === updated.id ? updated : plant))
@@ -326,7 +340,9 @@ export const PlantDashboard: React.FC = () => {
 			if (selectedPlantId === activeUsbPlantId) {
 				await disconnectSerial("delete-plant");
 			}
-			await deletePlant(selectedPlantId);
+			await deletePlant(selectedPlantId, {
+				adminSessionToken: adminToken || undefined,
+			});
 			setPlants((prev) => prev.filter((plant) => plant.id !== selectedPlantId));
 			setSelectedPlantId(null);
 		} catch (err) {
@@ -335,6 +351,31 @@ export const PlantDashboard: React.FC = () => {
 		} finally {
 			setDeleting(false);
 		}
+	};
+
+	const handleAdminLogin = async (event: React.FormEvent) => {
+		event.preventDefault();
+		setError(null);
+		try {
+			const session = await adminLogin(adminUsername.trim(), adminPassword);
+			setAdminToken(session.token);
+			setAdminPassword("");
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "Unknown error";
+			setError(`Admin login failed. ${message}`);
+		}
+	};
+
+	const handleAdminLogout = async () => {
+		if (!adminToken) return;
+		try {
+			await adminLogout(adminToken);
+		} catch {
+			// Ignore logout network errors and clear client state.
+		}
+		setAdminToken("");
+		setAdminUsername("");
+		setAdminPassword("");
 	};
 
 	useEffect(() => {
@@ -384,6 +425,36 @@ export const PlantDashboard: React.FC = () => {
 			<header className="dashboard__header">
 				<div className="dashboard__brand">CODE PUB</div>
 				<h1 className="dashboard__title">Plant Health Dashboard</h1>
+				<div className="dashboard__admin">
+					{adminMode ? (
+						<div className="dashboard__admin-session">
+							<span className="dashboard__admin-badge">Admin mode enabled</span>
+							<button type="button" className="ghost-button" onClick={handleAdminLogout}>
+								Logout
+							</button>
+						</div>
+					) : (
+						<form className="dashboard__admin-form" onSubmit={handleAdminLogin}>
+							<input
+								type="text"
+								value={adminUsername}
+								onChange={(event) => setAdminUsername(event.target.value)}
+								placeholder="Admin username"
+								autoComplete="username"
+								required
+							/>
+							<input
+								type="password"
+								value={adminPassword}
+								onChange={(event) => setAdminPassword(event.target.value)}
+								placeholder="Admin password"
+								autoComplete="current-password"
+								required
+							/>
+							<button type="submit" className="ghost-button">Admin login</button>
+						</form>
+					)}
+				</div>
 			</header>
 
 			<main className="dashboard__main">

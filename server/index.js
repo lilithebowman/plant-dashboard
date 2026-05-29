@@ -11,8 +11,15 @@ import {
 	listPlantReadings,
 	listPlants,
 	updatePlant,
+	verifyPlantOwnerToken,
 } from "./plants.js";
 import { isMirrorEnabled, mirrorReadingToWorkshop } from "./mirror.js";
+import {
+	createAdminSession,
+	isAdminLoginEnabled,
+	revokeAdminSession,
+	verifyAdminSession,
+} from "./adminAuth.js";
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -20,7 +27,27 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, "..", "dist");
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "16kb" }));
+
+function getBearerToken(request) {
+	const header = String(request.headers.authorization || "");
+	if (!header.startsWith("Bearer ")) return "";
+	return header.slice("Bearer ".length).trim();
+}
+
+function getAdminSessionToken(request) {
+	return String(request.headers["x-admin-session"] || "").trim();
+}
+
+function isAuthorizedForPlantWrite(request, plantId) {
+	const adminToken = getAdminSessionToken(request);
+	if (adminToken && verifyAdminSession(adminToken)) {
+		return true;
+	}
+
+	const ownerToken = getBearerToken(request);
+	return verifyPlantOwnerToken(plantId, ownerToken);
+}
 
 function sendError(response, error, status = 400) {
 	response.status(status).json({ error: error instanceof Error ? error.message : String(error) });
@@ -36,8 +63,8 @@ app.get("/api/plants", (_request, response) => {
 
 app.post("/api/plants", (request, response) => {
 	try {
-		const plant = createPlant(request.body?.name, request.body?.id);
-		response.status(201).json({ plant });
+		const result = createPlant(request.body?.name, request.body?.id);
+		response.status(201).json(result);
 	} catch (error) {
 		sendError(response, error);
 	}
@@ -54,6 +81,11 @@ app.get("/api/plants/:plantId", (request, response) => {
 
 app.patch("/api/plants/:plantId", (request, response) => {
 	try {
+		if (!isAuthorizedForPlantWrite(request, request.params.plantId)) {
+			response.status(403).json({ error: "You are not allowed to edit this plant" });
+			return;
+		}
+
 		const plant = updatePlant(request.params.plantId, request.body || {});
 		if (!plant) {
 			response.status(404).json({ error: "Plant not found" });
@@ -66,6 +98,11 @@ app.patch("/api/plants/:plantId", (request, response) => {
 });
 
 app.delete("/api/plants/:plantId", (request, response) => {
+	if (!isAuthorizedForPlantWrite(request, request.params.plantId)) {
+		response.status(403).json({ error: "You are not allowed to delete this plant" });
+		return;
+	}
+
 	const deleted = deletePlant(request.params.plantId);
 	if (!deleted) {
 		response.status(404).json({ error: "Plant not found" });
@@ -100,6 +137,69 @@ app.get("/api/plants/:plantId/readings", (request, response) => {
 	response.json(result);
 });
 
+app.post("/api/admin/login", (request, response) => {
+	try {
+		const session = createAdminSession(request.body?.username, request.body?.password);
+		response.json({
+			adminLoginEnabled: isAdminLoginEnabled(),
+			session,
+		});
+	} catch (error) {
+		sendError(response, error, 401);
+	}
+});
+
+app.post("/api/admin/logout", (request, response) => {
+	const token = getAdminSessionToken(request);
+	revokeAdminSession(token);
+	response.status(204).end();
+});
+
+app.get("/api/admin/plants", (request, response) => {
+	const token = getAdminSessionToken(request);
+	if (!verifyAdminSession(token)) {
+		response.status(401).json({ error: "Admin login required" });
+		return;
+	}
+
+	response.json({ plants: listPlants() });
+});
+
+app.patch("/api/admin/plants/:plantId", (request, response) => {
+	const token = getAdminSessionToken(request);
+	if (!verifyAdminSession(token)) {
+		response.status(401).json({ error: "Admin login required" });
+		return;
+	}
+
+	try {
+		const plant = updatePlant(request.params.plantId, request.body || {});
+		if (!plant) {
+			response.status(404).json({ error: "Plant not found" });
+			return;
+		}
+		response.json({ plant });
+	} catch (error) {
+		sendError(response, error);
+	}
+});
+
+app.delete("/api/admin/plants/:plantId", (request, response) => {
+	const token = getAdminSessionToken(request);
+	if (!verifyAdminSession(token)) {
+		response.status(401).json({ error: "Admin login required" });
+		return;
+	}
+
+	const deleted = deletePlant(request.params.plantId);
+	if (!deleted) {
+		response.status(404).json({ error: "Plant not found" });
+		return;
+	}
+
+	response.status(204).end();
+});
+
 if (fs.existsSync(distDir)) {
 	app.use(express.static(distDir));
 	app.get(/^(?!\/api).*/, (_request, response) => {
@@ -111,5 +211,8 @@ app.listen(port, () => {
 	console.log(`Plant API listening on http://localhost:${port}`);
 	if (isMirrorEnabled()) {
 		console.log(`Workshop mirror enabled -> ${process.env.WORKSHOP_MIRROR_BASE_URL}`);
+	}
+	if (!isAdminLoginEnabled()) {
+		console.warn("Admin login is disabled. Set ADMIN_PASSWORD to enable /api/admin/login.");
 	}
 });

@@ -25,6 +25,13 @@ type ApiPlant = {
 	latestReading?: ApiReading | null;
 };
 
+type ApiCreatePlantResult = {
+	plant: ApiPlant;
+	creatorToken: string;
+};
+
+const OWNER_TOKEN_STORAGE_KEY = "plantOwnerTokens";
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "")
 	.trim()
 	.replace(/\/+$/, "");
@@ -82,6 +89,39 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 	return (await response.json()) as T;
 }
 
+function readOwnerTokens(): Record<string, string> {
+	try {
+		const raw = window.localStorage.getItem(OWNER_TOKEN_STORAGE_KEY);
+		if (!raw) return {};
+		const parsed = JSON.parse(raw);
+		if (!parsed || typeof parsed !== "object") return {};
+		return parsed as Record<string, string>;
+	} catch {
+		return {};
+	}
+}
+
+function writeOwnerTokens(tokens: Record<string, string>) {
+	window.localStorage.setItem(OWNER_TOKEN_STORAGE_KEY, JSON.stringify(tokens));
+}
+
+export function getPlantOwnerToken(plantId: string): string {
+	return readOwnerTokens()[plantId] ?? "";
+}
+
+export function setPlantOwnerToken(plantId: string, token: string) {
+	if (!plantId || !token) return;
+	const tokens = readOwnerTokens();
+	tokens[plantId] = token;
+	writeOwnerTokens(tokens);
+}
+
+export function removePlantOwnerToken(plantId: string) {
+	const tokens = readOwnerTokens();
+	delete tokens[plantId];
+	writeOwnerTokens(tokens);
+}
+
 export async function fetchPlants(): Promise<Plant[]> {
 	const data = await fetchJson<{ plants?: ApiPlant[] } | ApiPlant[]>(
 		apiUrl("/api/plants")
@@ -92,39 +132,69 @@ export async function fetchPlants(): Promise<Plant[]> {
 export async function createPlant(input: CreatePlantInput): Promise<Plant> {
 	const normalizedName = input.name.trim();
 	const normalizedUuid = input.uuid.trim();
-	const data = await fetchJson<{ plant: ApiPlant } | ApiPlant>(
+	const data = await fetchJson<ApiCreatePlantResult | { plant: ApiPlant } | ApiPlant>(
 		apiUrl("/api/plants"),
 		{
 			method: "POST",
 			body: JSON.stringify({ name: normalizedName, id: normalizedUuid }),
 		}
 	);
+
+	if ("creatorToken" in data && data.creatorToken) {
+		setPlantOwnerToken(data.plant.id, data.creatorToken);
+		return mapApiPlant(data.plant);
+	}
+
 	return mapApiPlant(extractPlant(data));
 }
 
 export async function updatePlant(
 	plantId: string,
-	updates: UpdatePlantInput
+	updates: UpdatePlantInput,
+	options?: { adminSessionToken?: string }
 ): Promise<Plant> {
 	const payload = {
 		name: updates.name.trim(),
 		wetThreshold: updates.wetThreshold,
 	};
+	const ownerToken = getPlantOwnerToken(plantId);
+	const headers: Record<string, string> = {};
+	if (ownerToken) {
+		headers.Authorization = `Bearer ${ownerToken}`;
+	}
+	if (options?.adminSessionToken) {
+		headers["X-Admin-Session"] = options.adminSessionToken;
+	}
 
 	const data = await fetchJson<{ plant: ApiPlant }>(
 		apiUrl(`/api/plants/${plantId}`),
 		{
 			method: "PATCH",
+			headers,
 			body: JSON.stringify(payload),
 		}
 	);
 	return mapApiPlant(data.plant);
 }
 
-export async function deletePlant(plantId: string): Promise<void> {
+export async function deletePlant(
+	plantId: string,
+	options?: { adminSessionToken?: string }
+): Promise<void> {
+	const ownerToken = getPlantOwnerToken(plantId);
+	const headers: Record<string, string> = {};
+	if (ownerToken) {
+		headers.Authorization = `Bearer ${ownerToken}`;
+	}
+	if (options?.adminSessionToken) {
+		headers["X-Admin-Session"] = options.adminSessionToken;
+	}
+
 	await fetchJson<null>(apiUrl(`/api/plants/${plantId}`), {
 		method: "DELETE",
+		headers,
 	});
+	removePlantOwnerToken(plantId);
 }
 
 export async function submitPlantReading(
@@ -168,4 +238,33 @@ export async function fetchPlantHistory(
 		plant: mapApiPlant(data.plant),
 		readings: data.readings,
 	};
+}
+
+export async function adminLogin(username: string, password: string): Promise<{ token: string; username: string; expiresAt: string }> {
+	const data = await fetchJson<{ session: { token: string; username: string; expiresAt: string } }>(
+		apiUrl("/api/admin/login"),
+		{
+			method: "POST",
+			body: JSON.stringify({ username, password }),
+		}
+	);
+	return data.session;
+}
+
+export async function adminLogout(adminSessionToken: string): Promise<void> {
+	await fetchJson<null>(apiUrl("/api/admin/logout"), {
+		method: "POST",
+		headers: {
+			"X-Admin-Session": adminSessionToken,
+		},
+	});
+}
+
+export async function fetchAdminPlants(adminSessionToken: string): Promise<Plant[]> {
+	const data = await fetchJson<{ plants: ApiPlant[] }>(apiUrl("/api/admin/plants"), {
+		headers: {
+			"X-Admin-Session": adminSessionToken,
+		},
+	});
+	return data.plants.map(mapApiPlant);
 }
