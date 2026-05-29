@@ -137,6 +137,21 @@ The frontend uses these API endpoints:
 - `POST /api/plants/:plantId/readings`
 - `GET /api/plants/:plantId/readings?limit=60`
 
+## Optional workshop mirroring
+
+You can forward each locally saved reading to the original workshop server too.
+
+Set environment variables for the Node server:
+
+- `WORKSHOP_MIRROR_BASE_URL=https://codepub-nl.site`
+- `WORKSHOP_MIRROR_TIMEOUT_MS=1500` (optional)
+
+Behavior:
+
+- local SQLite write always happens first
+- mirror runs in the background and does not block local success
+- mirror failures are logged, but do not fail your local API request
+
 ## Data model
 
 SQLite tables created automatically on first boot:

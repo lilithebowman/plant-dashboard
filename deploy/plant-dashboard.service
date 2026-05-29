@@ -9,6 +9,9 @@ Group=www-data
 WorkingDirectory=/var/www/plants/plant-dashboard
 Environment=NODE_ENV=production
 Environment=PORT=3001
+# Optional: mirror readings to the workshop server too.
+Environment=WORKSHOP_MIRROR_BASE_URL=https://codepub-nl.site
+Environment=WORKSHOP_MIRROR_TIMEOUT_MS=1500
 ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=3

@@ -12,6 +12,7 @@ import {
 	listPlants,
 	updatePlant,
 } from "./plants.js";
+import { isMirrorEnabled, mirrorReadingToWorkshop } from "./mirror.js";
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -80,6 +81,10 @@ app.post("/api/plants/:plantId/readings", (request, response) => {
 			response.status(404).json({ error: "Plant not found" });
 			return;
 		}
+
+		// Mirror to the workshop server in the background, without blocking local writes.
+		void mirrorReadingToWorkshop(request.params.plantId, result.reading);
+
 		response.status(201).json(result);
 	} catch (error) {
 		sendError(response, error);
@@ -104,4 +109,7 @@ if (fs.existsSync(distDir)) {
 
 app.listen(port, () => {
 	console.log(`Plant API listening on http://localhost:${port}`);
+	if (isMirrorEnabled()) {
+		console.log(`Workshop mirror enabled -> ${process.env.WORKSHOP_MIRROR_BASE_URL}`);
+	}
 });
