@@ -13,6 +13,22 @@ body {
 	padding: 2rem 1.5rem 4rem;
 }
 
+.dashboard__footer {
+	margin-top: 2rem;
+	padding-top: 1rem;
+	border-top: 1px solid rgba(148, 163, 184, 0.2);
+	font-size: 0.9rem;
+}
+
+.dashboard__footer a {
+	color: #a5b4fc;
+	text-decoration: none;
+}
+
+.dashboard__footer a:hover {
+	text-decoration: underline;
+}
+
 .dashboard__header {
 	display: flex;
 	flex-direction: column;

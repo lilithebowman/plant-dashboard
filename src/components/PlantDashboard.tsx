@@ -558,6 +558,16 @@ export const PlantDashboard: React.FC = () => {
 					</div>
 				</div>
 			) : null}
+
+			<footer className="dashboard__footer">
+				<a
+					href="https://github.com/lilithebowman/plant-dashboard"
+					target="_blank"
+					rel="noreferrer"
+				>
+					View this project on GitHub
+				</a>
+			</footer>
 		</div>
 	);
 };
