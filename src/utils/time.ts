@@ -1,7 +1,6 @@
 // time.ts
-export function formatTimeSince(iso: string | null): string {
+export function formatTimeSince(iso: string | null, now: Date = new Date()): string {
 	if (!iso) return "Waiting for first reading";
-	const now = new Date();
 	const then = new Date(iso);
 	const diffMs = now.getTime() - then.getTime();
 	const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));

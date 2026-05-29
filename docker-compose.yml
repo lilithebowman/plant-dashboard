@@ -1,0 +1,7 @@
+services:
+  plant-dashboard:
+    build: .
+    container_name: plant-dashboard
+    ports:
+      - "8080:80"
+    restart: unless-stopped

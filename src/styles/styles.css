@@ -33,6 +33,16 @@ body {
 	font-weight: 700;
 }
 
+.dashboard__error {
+	margin: 0 0 1rem;
+	padding: 0.75rem 1rem;
+	border-radius: 0.5rem;
+	background: rgba(190, 24, 93, 0.15);
+	border: 1px solid rgba(244, 114, 182, 0.35);
+	color: #fbcfe8;
+	font-size: 0.9rem;
+}
+
 .add-plant-form {
 	background: rgba(15, 23, 42, 0.9);
 	border-radius: 0.75rem;

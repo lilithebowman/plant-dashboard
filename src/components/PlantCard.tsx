@@ -21,8 +21,12 @@ export const PlantCard: React.FC<Props> = ({ plant }) => {
 	// Optional: poll backend every N seconds for new moisture
 	useEffect(() => {
 		const id = setInterval(async () => {
-			const update = await fetchPlantSnapshot(plant.id);
-			setSnapshot((prev) => ({ ...prev, ...update }));
+			try {
+				const update = await fetchPlantSnapshot(plant.id);
+				setSnapshot((prev) => ({ ...prev, ...update }));
+			} catch {
+				// Keep the previous snapshot if polling fails.
+			}
 		}, 15000); // 15s
 		return () => clearInterval(id);
 	}, [plant.id]);
@@ -33,24 +37,24 @@ export const PlantCard: React.FC<Props> = ({ plant }) => {
 	};
 
 	const updatedLabel = snapshot.lastUpdated
-		? `Updated ${formatTimeSince(snapshot.lastUpdated)}`
+		? `Updated ${formatTimeSince(snapshot.lastUpdated, now)}`
 		: "Waiting for first reading";
 
 	const moistureLabel =
 		snapshot.moisture == null ? "--" : `${snapshot.moisture}%`;
 
 	return (
-		<div className="plant-card" >
-			<h2 className="plant-card__title" > {snapshot.name} </h2>
-			< p className="plant-card__updated" > {updatedLabel} </p>
+		<div className="plant-card">
+			<h2 className="plant-card__title">{snapshot.name}</h2>
+			<p className="plant-card__updated">{updatedLabel}</p>
 
-			< div className="plant-card__moisture" > {moistureLabel} </div>
+			<div className="plant-card__moisture">{moistureLabel}</div>
 
-			< div className="plant-card__footer" >
-				<span className="plant-card__snapshot-label" >
+			<div className="plant-card__footer">
+				<span className="plant-card__snapshot-label">
 					Latest moisture snapshot
 				</span>
-				< button className="plant-card__copy-btn" onClick={handleCopyApi} >
+				<button className="plant-card__copy-btn" onClick={handleCopyApi}>
 					Copy API
 				</button>
 			</div>

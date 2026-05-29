@@ -8,18 +8,32 @@ import { AddPlantForm } from "./AddPlantForm";
 export const PlantDashboard: React.FC = () => {
 	const [plants, setPlants] = useState<Plant[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
 		(async () => {
-			const data = await fetchPlants();
-			setPlants(data);
-			setLoading(false);
+			try {
+				const data = await fetchPlants();
+				setPlants(data);
+				setError(null);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : "Unknown error";
+				setError(`Failed to load plants. ${message}`);
+			} finally {
+				setLoading(false);
+			}
 		})();
 	}, []);
 
 	const handleCreate = async (data: { name: string; uuid: string }) => {
-		const newPlant = await createPlant(data);
-		setPlants((prev) => [newPlant, ...prev]);
+		try {
+			const newPlant = await createPlant(data);
+			setPlants((prev) => [newPlant, ...prev]);
+			setError(null);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "Unknown error";
+			setError(`Failed to create plant. ${message}`);
+		}
 	};
 
 	return (
@@ -31,6 +45,7 @@ export const PlantDashboard: React.FC = () => {
 
 			<main className="dashboard__main">
 				<AddPlantForm onCreate={handleCreate} />
+				{error ? <p className="dashboard__error">{error}</p> : null}
 
 				{loading ? (
 					<p className="dashboard__loading">Loading plants…</p>
