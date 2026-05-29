@@ -20,7 +20,7 @@ Steps:
 4. Start dev server:
    - npm run dev
 5. Open:
-   - http://localhost:5173
+   - <http://localhost:5173>
 
 ## 2) Production build
 
@@ -31,7 +31,7 @@ Steps:
 3. Test production output locally:
    - npm run preview
 4. Open:
-   - http://localhost:4173
+   - <http://localhost:4173>
 
 ## 3) Deploy on Ubuntu VPS (Nginx static hosting)
 
