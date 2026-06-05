@@ -17,6 +17,25 @@ function buildSparklinePath(readings: PlantReading[], width: number, height: num
 	return `M ${points.join(" L ")}`;
 }
 
+function buildMarkerIndices(totalPoints: number, maxMarkers = 24): number[] {
+	if (totalPoints <= 0) {
+		return [];
+	}
+
+	if (totalPoints <= maxMarkers) {
+		return Array.from({ length: totalPoints }, (_, index) => index);
+	}
+
+	const indices = new Set([0, totalPoints - 1]);
+	const middleMarkers = maxMarkers - 2;
+	for (let i = 1; i <= middleMarkers; i += 1) {
+		const normalized = i / (middleMarkers + 1);
+		indices.add(Math.round(normalized * (totalPoints - 1)));
+	}
+
+	return Array.from(indices).sort((a, b) => a - b);
+}
+
 type Props = {
 	plant: Plant;
 	readings: PlantReading[];
@@ -46,6 +65,7 @@ export const PlantHistoryDialog: React.FC<Props> = ({
 	const width = 640;
 	const height = 140;
 	const path = buildSparklinePath(readings, width, height);
+	const markerIndices = buildMarkerIndices(readings.length, 24);
 
 	return (
 		<div className="modal-backdrop" onClick={onClose} role="presentation">
@@ -104,7 +124,8 @@ export const PlantHistoryDialog: React.FC<Props> = ({
 								return <line key={value} x1="0" y1={y} x2={width} y2={y} className="history-chart__grid" />;
 							})}
 							<path d={path} className="history-chart__line" />
-							{readings.map((reading, index) => {
+							{markerIndices.map((index) => {
+								const reading = readings[index];
 								const x = readings.length === 1 ? width / 2 : (index / (readings.length - 1)) * width;
 								const percent = reading.moisturePercent ?? 0;
 								const y = height - (percent / 100) * height;
