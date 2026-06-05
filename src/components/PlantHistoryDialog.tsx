@@ -1,5 +1,6 @@
 import React from "react";
 import { Plant, PlantReading } from "../types/plant";
+import { PlantHistoryRange } from "../services/api";
 
 function buildSparklinePath(readings: PlantReading[], width: number, height: number): string {
 	if (readings.length === 0) {
@@ -21,7 +22,16 @@ type Props = {
 	readings: PlantReading[];
 	loading: boolean;
 	error: string | null;
+	range: PlantHistoryRange;
+	onChangeRange: (range: PlantHistoryRange) => void;
 	onClose: () => void;
+};
+
+const RANGE_LABELS: Record<PlantHistoryRange, string> = {
+	last60: "Last 60 readings",
+	week: "Last week",
+	month: "Last month",
+	year: "Last year",
 };
 
 export const PlantHistoryDialog: React.FC<Props> = ({
@@ -29,6 +39,8 @@ export const PlantHistoryDialog: React.FC<Props> = ({
 	readings,
 	loading,
 	error,
+	range,
+	onChangeRange,
 	onClose,
 }) => {
 	const width = 640;
@@ -52,12 +64,31 @@ export const PlantHistoryDialog: React.FC<Props> = ({
 					<div className="history-chart-card__head">
 						<div>
 							<span>Historical moisture</span>
-							<strong>Last {readings.length} readings</strong>
+							<strong>{RANGE_LABELS[range]}</strong>
 						</div>
 						<div className="history-chart-card__legend">
 							<span>0%</span>
 							<span>100%</span>
 						</div>
+					</div>
+
+					<div className="history-range-tabs" role="tablist" aria-label="History range">
+						{([
+							"last60",
+							"week",
+							"month",
+							"year",
+						] as PlantHistoryRange[]).map((option) => (
+							<button
+								key={option}
+								type="button"
+								className={`history-range-tab${range === option ? " is-active" : ""}`}
+								onClick={() => onChangeRange(option)}
+								disabled={loading}
+							>
+								{RANGE_LABELS[option]}
+							</button>
+						))}
 					</div>
 
 					{loading ? (

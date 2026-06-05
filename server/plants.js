@@ -82,6 +82,21 @@ function normalizeReceivedAt(receivedAt) {
 	return date.toISOString();
 }
 
+function resolveHistoryWindow(range) {
+	const normalizedRange = String(range || "").trim().toLowerCase();
+	const now = Date.now();
+	if (normalizedRange === "week") {
+		return new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+	}
+	if (normalizedRange === "month") {
+		return new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+	}
+	if (normalizedRange === "year") {
+		return new Date(now - 365 * 24 * 60 * 60 * 1000).toISOString();
+	}
+	return null;
+}
+
 function mapRawToPercent(rawValue, wetThreshold = DEFAULT_WET_THRESHOLD) {
 	const normalizedRawValue = normalizeRawValue(rawValue);
 	if (normalizedRawValue === null) {
@@ -316,21 +331,34 @@ export function appendPlantReading(plantId, payload) {
 	};
 }
 
-export function listPlantReadings(plantId, limit = 60) {
+export function listPlantReadings(plantId, limit = 60, range) {
 	const db = getDb();
 	const plant = getPlant(plantId);
 	if (!plant) {
 		return null;
 	}
 
-	const safeLimit = clamp(Number(limit) || 60, 1, 500);
-	const rows = db.prepare(`
-		SELECT raw_value as rawValue, source, received_at as receivedAt
-		FROM readings
-		WHERE plant_id = ?
-		ORDER BY received_at DESC, id DESC
-		LIMIT ?
-	`).all(plantId, safeLimit);
+	const windowStartIso = resolveHistoryWindow(range);
+	let rows;
+
+	if (windowStartIso) {
+		rows = db.prepare(`
+			SELECT raw_value as rawValue, source, received_at as receivedAt
+			FROM readings
+			WHERE plant_id = ? AND received_at >= ?
+			ORDER BY received_at DESC, id DESC
+			LIMIT 500
+		`).all(plantId, windowStartIso);
+	} else {
+		const safeLimit = clamp(Number(limit) || 60, 1, 500);
+		rows = db.prepare(`
+			SELECT raw_value as rawValue, source, received_at as receivedAt
+			FROM readings
+			WHERE plant_id = ?
+			ORDER BY received_at DESC, id DESC
+			LIMIT ?
+		`).all(plantId, safeLimit);
+	}
 
 	return {
 		plant,

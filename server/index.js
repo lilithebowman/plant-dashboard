@@ -145,7 +145,7 @@ app.post("/api/plants/:plantId/readings", (request, response) => {
 });
 
 app.get("/api/plants/:plantId/readings", (request, response) => {
-	const result = listPlantReadings(request.params.plantId, request.query.limit);
+	const result = listPlantReadings(request.params.plantId, request.query.limit, request.query.range);
 	if (!result) {
 		response.status(404).json({ error: "Plant not found" });
 		return;

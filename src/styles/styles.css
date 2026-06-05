@@ -570,6 +570,38 @@ body {
 	color: #94a3b8;
 }
 
+.history-range-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.45rem;
+	margin-bottom: 0.75rem;
+}
+
+.history-range-tab {
+	border: 1px solid rgba(148, 163, 184, 0.35);
+	background: rgba(15, 23, 42, 0.7);
+	color: #e5e7eb;
+	padding: 0.3rem 0.65rem;
+	border-radius: 999px;
+	font-size: 0.78rem;
+	cursor: pointer;
+}
+
+.history-range-tab:hover:not(:disabled) {
+	border-color: rgba(99, 102, 241, 0.55);
+}
+
+.history-range-tab.is-active {
+	background: rgba(79, 70, 229, 0.2);
+	border-color: rgba(99, 102, 241, 0.75);
+	color: #c7d2fe;
+}
+
+.history-range-tab:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
 .history-chart-card__empty {
 	margin: 0;
 	color: #cbd5e1;

@@ -11,6 +11,7 @@ import {
 	deletePlant,
 	getMoistureEndpoint,
 	submitPlantReading,
+	type PlantHistoryRange,
 	fetchPlantHistory,
 } from "../services/api";
 import { PlantCard } from "./PlantCard";
@@ -57,6 +58,7 @@ export const PlantDashboard: React.FC = () => {
 	const [historyReadings, setHistoryReadings] = useState<PlantReading[]>([]);
 	const [historyLoading, setHistoryLoading] = useState(false);
 	const [historyError, setHistoryError] = useState<string | null>(null);
+	const [historyRange, setHistoryRange] = useState<PlantHistoryRange>("last60");
 	const [serialBusy, setSerialBusy] = useState(false);
 	const [usbStatus, setUsbStatus] = useState("");
 	const [activeUsbPlantId, setActiveUsbPlantId] = useState<string | null>(null);
@@ -120,14 +122,14 @@ export const PlantDashboard: React.FC = () => {
 		setDetailError(null);
 	};
 
-	const openHistory = async (plant: Plant) => {
+	const loadPlantHistory = async (plant: Plant, range: PlantHistoryRange) => {
 		setHistoryPlant(plant);
 		setHistoryReadings([]);
 		setHistoryLoading(true);
 		setHistoryError(null);
 
 		try {
-			const result = await fetchPlantHistory(plant.id, 60);
+			const result = await fetchPlantHistory(plant.id, range);
 			setHistoryPlant(result.plant);
 			setHistoryReadings(result.readings);
 		} catch (err) {
@@ -138,10 +140,25 @@ export const PlantDashboard: React.FC = () => {
 		}
 	};
 
+	const openHistory = async (plant: Plant) => {
+		setHistoryRange("last60");
+		await loadPlantHistory(plant, "last60");
+	};
+
+	const handleHistoryRangeChange = async (range: PlantHistoryRange) => {
+		if (!historyPlant || historyLoading || range === historyRange) {
+			return;
+		}
+
+		setHistoryRange(range);
+		await loadPlantHistory(historyPlant, range);
+	};
+
 	const closeHistory = () => {
 		setHistoryPlant(null);
 		setHistoryReadings([]);
 		setHistoryError(null);
+		setHistoryRange("last60");
 	};
 
 	const closeManage = () => {
@@ -492,6 +509,8 @@ export const PlantDashboard: React.FC = () => {
 					readings={historyReadings}
 					loading={historyLoading}
 					error={historyError}
+					range={historyRange}
+					onChangeRange={handleHistoryRangeChange}
 					onClose={closeHistory}
 				/>
 			) : null}

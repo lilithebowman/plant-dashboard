@@ -30,6 +30,8 @@ type ApiCreatePlantResult = {
 	creatorToken: string;
 };
 
+export type PlantHistoryRange = "last60" | "week" | "month" | "year";
+
 const OWNER_TOKEN_STORAGE_KEY = "plantOwnerTokens";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "")
@@ -229,10 +231,17 @@ export async function fetchPlantSnapshot(
 
 export async function fetchPlantHistory(
 	plantId: string,
-	limit = 60
+	range: PlantHistoryRange = "last60"
 ): Promise<{ plant: Plant; readings: PlantReading[] }> {
+	const params = new URLSearchParams();
+	if (range === "last60") {
+		params.set("limit", "60");
+	} else {
+		params.set("range", range);
+	}
+
 	const data = await fetchJson<{ plant: ApiPlant; readings: ApiReading[] }>(
-		apiUrl(`/api/plants/${plantId}/readings?limit=${limit}`)
+		apiUrl(`/api/plants/${plantId}/readings?${params.toString()}`)
 	);
 	return {
 		plant: mapApiPlant(data.plant),
