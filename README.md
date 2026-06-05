@@ -188,6 +188,7 @@ Plant create now returns:
 
 - `plant`: the created plant object
 - `creatorToken`: one-time owner token for that plant
+- `ingestToken`: one-time device ingest token for posting persisted readings
 
 The frontend stores this owner token in browser local storage and sends it as a bearer token for plant updates/deletes.
 
@@ -196,6 +197,12 @@ Authorization rules:
 - `PATCH /api/plants/:plantId` and `DELETE /api/plants/:plantId` require authorization.
 - Use `Authorization: Bearer <creatorToken>` for plant owner access.
 - Use `X-Admin-Session: <sessionToken>` for admin access.
+
+Reading ingestion rules:
+
+- `POST /api/plants/:plantId/readings` persists to SQLite only when a valid plant ingest token is provided.
+- Send ingest token in `X-Plant-Token: <ingestToken>` (recommended) or `Authorization: Bearer <ingestToken>`.
+- Tokenless/invalid-token posts are accepted only in legacy mode: they update the current live snapshot but are not stored in history.
 
 Admin auth setup:
 

@@ -6,6 +6,7 @@ const MIN_WET_THRESHOLD = 500;
 const MAX_WET_THRESHOLD = 2049;
 const DRY_VALUE = 4095;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const legacyLatestReadings = new Map();
 
 function clamp(value, min, max) {
 	return Math.min(Math.max(value, min), max);
@@ -43,6 +44,10 @@ function sanitizePlantId(plantId) {
 
 function createOwnerToken() {
 	return `${randomUUID()}${randomBytes(16).toString("hex")}`;
+}
+
+function createIngestToken() {
+	return `${randomUUID()}${randomBytes(24).toString("hex")}`;
 }
 
 function hashToken(token) {
@@ -149,6 +154,29 @@ function mapPlantSummary(row) {
 	};
 }
 
+function applyLegacyLatestReading(plant) {
+	const legacyReading = legacyLatestReadings.get(plant.id);
+	if (!legacyReading) {
+		return plant;
+	}
+
+	const currentLatestAt = plant.latestReading?.receivedAt
+		? new Date(plant.latestReading.receivedAt).getTime()
+		: 0;
+	const legacyLatestAt = legacyReading.receivedAt
+		? new Date(legacyReading.receivedAt).getTime()
+		: 0;
+
+	if (legacyLatestAt > currentLatestAt) {
+		return {
+			...plant,
+			latestReading: legacyReading,
+		};
+	}
+
+	return plant;
+}
+
 function getPlantSummaryRow(plantId) {
 	const db = getDb();
 	return db.prepare(`
@@ -193,7 +221,7 @@ export function listPlants() {
 		)
 		ORDER BY p.created_at ASC
 	`).all();
-	return rows.map(mapPlantSummary);
+	return rows.map((row) => applyLegacyLatestReading(mapPlantSummary(row)));
 }
 
 export function getPlant(plantId) {
@@ -201,8 +229,9 @@ export function getPlant(plantId) {
 	if (!row) {
 		return null;
 	}
+	const summary = applyLegacyLatestReading(mapPlantSummary(row));
 	return {
-		...mapPlantSummary(row),
+		...summary,
 		apiPath: `/api/plants/${plantId}/readings`,
 	};
 }
@@ -231,9 +260,17 @@ export function createPlant(name, plantId) {
 		VALUES (?, ?, ?, ?)
 	`).run(id, ownerTokenHash, now, now);
 
+	const ingestToken = createIngestToken();
+	const ingestTokenHash = hashToken(ingestToken);
+	db.prepare(`
+		INSERT INTO plant_ingest_tokens (plant_id, token_hash, created_at, last_used_at)
+		VALUES (?, ?, ?, ?)
+	`).run(id, ingestTokenHash, now, now);
+
 	return {
 		plant: getPlant(id),
 		creatorToken: ownerToken,
+		ingestToken,
 	};
 }
 
@@ -296,13 +333,45 @@ export function updatePlant(plantId, updates) {
 	return getPlant(plantId);
 }
 
+export function verifyPlantIngestToken(plantId, providedToken) {
+	const db = getDb();
+	if (!providedToken) {
+		return false;
+	}
+
+	const row = db.prepare(`
+		SELECT token_hash as tokenHash
+		FROM plant_ingest_tokens
+		WHERE plant_id = ?
+		LIMIT 1
+	`).get(plantId);
+
+	if (!row?.tokenHash) {
+		return false;
+	}
+
+	const providedHash = hashToken(providedToken);
+	const valid = constantTimeHashEquals(row.tokenHash, providedHash);
+	if (!valid) {
+		return false;
+	}
+
+	db.prepare(`
+		UPDATE plant_ingest_tokens
+		SET last_used_at = ?
+		WHERE plant_id = ?
+	`).run(new Date().toISOString(), plantId);
+
+	return true;
+}
+
 export function deletePlant(plantId) {
 	const db = getDb();
 	const result = db.prepare(`DELETE FROM plants WHERE id = ?`).run(plantId);
 	return result.changes > 0;
 }
 
-export function appendPlantReading(plantId, payload) {
+export function appendPlantReading(plantId, payload, options = {}) {
 	const db = getDb();
 	const plant = db.prepare(`SELECT id, wet_threshold as wetThreshold FROM plants WHERE id = ? LIMIT 1`).get(plantId);
 	if (!plant) {
@@ -316,6 +385,17 @@ export function appendPlantReading(plantId, payload) {
 
 	const source = sanitizeSource(payload.source);
 	const receivedAt = normalizeReceivedAt(payload.receivedAt);
+	const shouldPersist = options.persist !== false;
+	const reading = decorateReading({ rawValue, source, receivedAt }, plant.wetThreshold);
+
+	if (!shouldPersist) {
+		legacyLatestReadings.set(plantId, reading);
+		return {
+			plant: getPlant(plantId),
+			reading,
+			stored: false,
+		};
+	}
 
 	db.prepare(`
 		INSERT INTO readings (plant_id, raw_value, source, received_at)
@@ -324,10 +404,10 @@ export function appendPlantReading(plantId, payload) {
 
 	db.prepare(`UPDATE plants SET updated_at = ? WHERE id = ?`).run(receivedAt, plantId);
 
-	const reading = decorateReading({ rawValue, source, receivedAt }, plant.wetThreshold);
 	return {
 		plant: getPlant(plantId),
 		reading,
+		stored: true,
 	};
 }
 
@@ -361,7 +441,7 @@ export function listPlantReadings(plantId, limit = 60, range) {
 	}
 
 	return {
-		plant,
+		plant: applyLegacyLatestReading(plant),
 		readings: rows
 			.map((row) => decorateReading(row, plant.wetThreshold))
 			.reverse(),

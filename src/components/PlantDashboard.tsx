@@ -65,6 +65,11 @@ export const PlantDashboard: React.FC = () => {
 	const [adminToken, setAdminToken] = useState("");
 	const [adminUsername, setAdminUsername] = useState("");
 	const [adminPassword, setAdminPassword] = useState("");
+	const [newIngestToken, setNewIngestToken] = useState<{
+		plantId: string;
+		plantName: string;
+		token: string;
+	} | null>(null);
 
 	const serialPortRef = useRef<any | null>(null);
 	const serialReaderRef = useRef<any | null>(null);
@@ -93,13 +98,25 @@ export const PlantDashboard: React.FC = () => {
 
 	const handleCreate = async (data: { name: string; uuid: string }) => {
 		try {
-			const newPlant = await createPlant(data);
-			setPlants((prev) => [newPlant, ...prev]);
+			const result = await createPlant(data);
+			setPlants((prev) => [result.plant, ...prev]);
+			if (result.ingestToken) {
+				setNewIngestToken({
+					plantId: result.plant.id,
+					plantName: result.plant.name,
+					token: result.ingestToken,
+				});
+			}
 			setError(null);
 		} catch (err) {
 			const message = err instanceof Error ? err.message : "Unknown error";
 			setError(`Failed to create plant. ${message}`);
 		}
+	};
+
+	const copyIngestToken = async () => {
+		if (!newIngestToken) return;
+		await navigator.clipboard.writeText(newIngestToken.token);
 	};
 
 	const selectedPlant = selectedPlantId
@@ -513,6 +530,37 @@ export const PlantDashboard: React.FC = () => {
 					onChangeRange={handleHistoryRangeChange}
 					onClose={closeHistory}
 				/>
+			) : null}
+
+			{newIngestToken ? (
+				<div className="modal-backdrop" role="presentation" onClick={() => setNewIngestToken(null)}>
+					<div className="modal-panel" role="dialog" onClick={(event) => event.stopPropagation()}>
+						<div className="modal-head">
+							<div>
+								<p className="modal-eyebrow">Save this now</p>
+								<h2>{newIngestToken.plantName} ingest token</h2>
+							</div>
+							<button type="button" className="modal-close" onClick={() => setNewIngestToken(null)}>
+								Close
+							</button>
+						</div>
+						<p className="add-plant-form__subtitle">
+							This token is only shown once. Use it in your ESP32 or firmware when posting readings.
+						</p>
+						<code className="modal-code">{newIngestToken.token}</code>
+						<p className="add-plant-form__subtitle">
+							Send with header <code>X-Plant-Token</code> or bearer token to <code>{getMoistureEndpoint(newIngestToken.plantId)}</code>.
+						</p>
+						<div className="modal-actions">
+							<button type="button" className="ghost-button" onClick={() => void copyIngestToken()}>
+								Copy token
+							</button>
+							<button type="button" className="ghost-button" onClick={() => setNewIngestToken(null)}>
+								Done
+							</button>
+						</div>
+					</div>
+				</div>
 			) : null}
 
 			{selectedPlant ? (

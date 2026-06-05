@@ -28,6 +28,7 @@ type ApiPlant = {
 type ApiCreatePlantResult = {
 	plant: ApiPlant;
 	creatorToken: string;
+	ingestToken?: string;
 };
 
 export type PlantHistoryRange = "last60" | "week" | "month" | "year";
@@ -131,7 +132,7 @@ export async function fetchPlants(): Promise<Plant[]> {
 	return extractPlantList(data).map(mapApiPlant);
 }
 
-export async function createPlant(input: CreatePlantInput): Promise<Plant> {
+export async function createPlant(input: CreatePlantInput): Promise<{ plant: Plant; ingestToken: string | null }> {
 	const normalizedName = input.name.trim();
 	const normalizedUuid = input.uuid.trim();
 	const data = await fetchJson<ApiCreatePlantResult | { plant: ApiPlant } | ApiPlant>(
@@ -144,10 +145,16 @@ export async function createPlant(input: CreatePlantInput): Promise<Plant> {
 
 	if ("creatorToken" in data && data.creatorToken) {
 		setPlantOwnerToken(data.plant.id, data.creatorToken);
-		return mapApiPlant(data.plant);
+		return {
+			plant: mapApiPlant(data.plant),
+			ingestToken: data.ingestToken ?? null,
+		};
 	}
 
-	return mapApiPlant(extractPlant(data));
+	return {
+		plant: mapApiPlant(extractPlant(data)),
+		ingestToken: null,
+	};
 }
 
 export async function updatePlant(
@@ -204,10 +211,17 @@ export async function submitPlantReading(
 	rawValue: number,
 	source = "api"
 ): Promise<Plant> {
+	const ownerToken = getPlantOwnerToken(plantId);
+	const headers: Record<string, string> = {};
+	if (ownerToken) {
+		headers.Authorization = `Bearer ${ownerToken}`;
+	}
+
 	const data = await fetchJson<{ plant: ApiPlant }>(
 		apiUrl(`/api/plants/${plantId}/readings`),
 		{
 			method: "POST",
+			headers,
 			body: JSON.stringify({ rawValue, source }),
 		}
 	);

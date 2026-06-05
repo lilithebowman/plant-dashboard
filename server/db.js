@@ -45,12 +45,23 @@ const createPlantOwnerTokensTable = `
 	)
 `;
 
+const createPlantIngestTokensTable = `
+	CREATE TABLE IF NOT EXISTS plant_ingest_tokens (
+		plant_id TEXT PRIMARY KEY,
+		token_hash TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		last_used_at TEXT NOT NULL,
+		FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
+	)
+`;
+
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA foreign_keys = ON;");
 db.exec(createPlantsTable);
 db.exec(createReadingsTable);
 db.exec(createReadingsIndex);
 db.exec(createPlantOwnerTokensTable);
+db.exec(createPlantIngestTokensTable);
 
 export function getDb() {
 	return db;

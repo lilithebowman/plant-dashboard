@@ -31,6 +31,7 @@ test("creates plants and validates unsafe or invalid input", () => {
 
 	assert.equal(result.plant.name, "Aloe Vera");
 	assert.equal(typeof result.creatorToken, "string");
+	assert.equal(typeof result.ingestToken, "string");
 	assert.throws(() => plants.createPlant("x", "not-a-uuid"), /valid UUID/);
 	assert.throws(
 		() => plants.createPlant("x".repeat(61), "22222222-2222-4222-8222-222222222222"),
@@ -44,6 +45,14 @@ test("accepts only valid owner token for write authorization", () => {
 
 	assert.equal(plants.verifyPlantOwnerToken(plantId, creatorToken), true);
 	assert.equal(plants.verifyPlantOwnerToken(plantId, "wrong-token"), false);
+});
+
+test("accepts only valid ingest token for persisted readings", () => {
+	const plantId = "66666666-6666-4666-8666-666666666666";
+	const { ingestToken } = plants.createPlant("Orchid", plantId);
+
+	assert.equal(plants.verifyPlantIngestToken(plantId, ingestToken), true);
+	assert.equal(plants.verifyPlantIngestToken(plantId, "wrong-token"), false);
 });
 
 test("supports history windows for week, month, and year", () => {
@@ -78,4 +87,26 @@ test("normalizes risky source input length", () => {
 	});
 
 	assert.equal(result.reading.source.length <= 40, true);
+});
+
+test("keeps legacy tokenless updates out of history while showing latest snapshot", () => {
+	const plantId = "77777777-7777-4777-8777-777777777777";
+	plants.createPlant("Legacy Test", plantId);
+
+	const legacy = plants.appendPlantReading(
+		plantId,
+		{
+			rawValue: 1111,
+			source: "legacy-device",
+			receivedAt: new Date().toISOString(),
+		},
+		{ persist: false }
+	);
+
+	assert.equal(legacy.stored, false);
+
+	const history = plants.listPlantReadings(plantId, 60);
+	assert.equal(history.readings.length, 0);
+	assert.equal(history.plant.latestReading?.source, "legacy-device");
+	assert.equal(history.plant.latestReading?.rawValue, 1111);
 });

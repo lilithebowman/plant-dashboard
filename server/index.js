@@ -14,6 +14,7 @@ import {
 	listPlantReadings,
 	listPlants,
 	updatePlant,
+	verifyPlantIngestToken,
 	verifyPlantOwnerToken,
 } from "./plants.js";
 import { isMirrorEnabled, mirrorReadingToWorkshop } from "./mirror.js";
@@ -49,6 +50,20 @@ function getBearerToken(request) {
 	const header = String(request.headers.authorization || "");
 	if (!header.startsWith("Bearer ")) return "";
 	return header.slice("Bearer ".length).trim();
+}
+
+function getPlantIngestToken(request) {
+	const tokenFromHeader = String(request.headers["x-plant-token"] || "").trim();
+	if (tokenFromHeader) {
+		return tokenFromHeader;
+	}
+
+	const bearer = getBearerToken(request);
+	if (bearer) {
+		return bearer;
+	}
+
+	return String(request.body?.token || "").trim();
 }
 
 function getAdminSessionToken(request) {
@@ -129,16 +144,29 @@ app.delete("/api/plants/:plantId", (request, response) => {
 
 app.post("/api/plants/:plantId/readings", (request, response) => {
 	try {
-		const result = appendPlantReading(request.params.plantId, request.body || {});
+		const ingestToken = getPlantIngestToken(request);
+		const canPersist = verifyPlantIngestToken(request.params.plantId, ingestToken)
+			|| verifyPlantOwnerToken(request.params.plantId, ingestToken);
+		const result = appendPlantReading(request.params.plantId, request.body || {}, {
+			persist: canPersist,
+		});
 		if (!result) {
 			response.status(404).json({ error: "Plant not found" });
 			return;
 		}
 
-		// Mirror to the workshop server in the background, without blocking local writes.
-		void mirrorReadingToWorkshop(request.params.plantId, result.reading);
+		if (result.stored) {
+			// Mirror to the workshop server in the background, without blocking local writes.
+			void mirrorReadingToWorkshop(request.params.plantId, result.reading);
+		}
 
-		response.status(201).json(result);
+		response.status(201).json({
+			...result,
+			stored: result.stored,
+			warning: result.stored
+				? undefined
+				: "Legacy update accepted without token and shown as latest only; it was not stored in history.",
+		});
 	} catch (error) {
 		sendError(response, error);
 	}
