@@ -102,6 +102,29 @@ function resolveHistoryWindow(range) {
 	return null;
 }
 
+function downsampleReadingsByWindow(rows, windowStartIso, maxPoints = 60) {
+	if (!Array.isArray(rows) || rows.length <= maxPoints) {
+		return rows;
+	}
+
+	const startMs = new Date(windowStartIso).getTime();
+	const endMs = Date.now();
+	const durationMs = Math.max(1, endMs - startMs);
+	const bucketWidthMs = durationMs / maxPoints;
+	const buckets = new Array(maxPoints).fill(null);
+
+	for (const row of rows) {
+		const ts = new Date(row.receivedAt).getTime();
+		if (!Number.isFinite(ts)) continue;
+		const normalized = Math.min(Math.max(ts - startMs, 0), durationMs - 1);
+		const index = Math.min(maxPoints - 1, Math.floor(normalized / bucketWidthMs));
+		// Keep the newest reading in each time bucket.
+		buckets[index] = row;
+	}
+
+	return buckets.filter(Boolean);
+}
+
 function mapRawToPercent(rawValue, wetThreshold = DEFAULT_WET_THRESHOLD) {
 	const normalizedRawValue = normalizeRawValue(rawValue);
 	if (normalizedRawValue === null) {
@@ -365,6 +388,32 @@ export function verifyPlantIngestToken(plantId, providedToken) {
 	return true;
 }
 
+export function rotatePlantIngestToken(plantId) {
+	const db = getDb();
+	const plant = db.prepare(`SELECT id FROM plants WHERE id = ? LIMIT 1`).get(plantId);
+	if (!plant) {
+		return null;
+	}
+
+	const now = new Date().toISOString();
+	const ingestToken = createIngestToken();
+	const ingestTokenHash = hashToken(ingestToken);
+
+	db.prepare(`
+		INSERT INTO plant_ingest_tokens (plant_id, token_hash, created_at, last_used_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(plant_id) DO UPDATE SET
+			token_hash = excluded.token_hash,
+			created_at = excluded.created_at,
+			last_used_at = excluded.last_used_at
+	`).run(plantId, ingestTokenHash, now, now);
+
+	return {
+		plantId,
+		ingestToken,
+	};
+}
+
 export function deletePlant(plantId) {
 	const db = getDb();
 	const result = db.prepare(`DELETE FROM plants WHERE id = ?`).run(plantId);
@@ -426,9 +475,9 @@ export function listPlantReadings(plantId, limit = 60, range) {
 			SELECT raw_value as rawValue, source, received_at as receivedAt
 			FROM readings
 			WHERE plant_id = ? AND received_at >= ?
-			ORDER BY received_at DESC, id DESC
-			LIMIT 500
+			ORDER BY received_at ASC, id ASC
 		`).all(plantId, windowStartIso);
+		rows = downsampleReadingsByWindow(rows, windowStartIso, 60);
 	} else {
 		const safeLimit = clamp(Number(limit) || 60, 1, 500);
 		rows = db.prepare(`
@@ -438,12 +487,12 @@ export function listPlantReadings(plantId, limit = 60, range) {
 			ORDER BY received_at DESC, id DESC
 			LIMIT ?
 		`).all(plantId, safeLimit);
+		rows = rows.reverse();
 	}
 
 	return {
 		plant: applyLegacyLatestReading(plant),
 		readings: rows
-			.map((row) => decorateReading(row, plant.wetThreshold))
-			.reverse(),
+			.map((row) => decorateReading(row, plant.wetThreshold)),
 	};
 }

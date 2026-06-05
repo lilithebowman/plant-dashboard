@@ -13,6 +13,7 @@ import {
 	getPlant,
 	listPlantReadings,
 	listPlants,
+	rotatePlantIngestToken,
 	updatePlant,
 	verifyPlantIngestToken,
 	verifyPlantOwnerToken,
@@ -167,6 +168,24 @@ app.post("/api/plants/:plantId/readings", (request, response) => {
 				? undefined
 				: "Legacy update accepted without token and shown as latest only; it was not stored in history.",
 		});
+	} catch (error) {
+		sendError(response, error);
+	}
+});
+
+app.post("/api/plants/:plantId/ingest-token/rotate", (request, response) => {
+	if (!isAuthorizedForPlantWrite(request, request.params.plantId)) {
+		response.status(403).json({ error: "You are not allowed to rotate this plant ingest token" });
+		return;
+	}
+
+	try {
+		const result = rotatePlantIngestToken(request.params.plantId);
+		if (!result) {
+			response.status(404).json({ error: "Plant not found" });
+			return;
+		}
+		response.json(result);
 	} catch (error) {
 		sendError(response, error);
 	}

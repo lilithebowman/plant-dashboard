@@ -55,6 +55,18 @@ test("accepts only valid ingest token for persisted readings", () => {
 	assert.equal(plants.verifyPlantIngestToken(plantId, "wrong-token"), false);
 });
 
+test("rotates ingest token and invalidates the previous token", () => {
+	const plantId = "88888888-8888-4888-8888-888888888888";
+	const { ingestToken: firstToken } = plants.createPlant("Rotate Test", plantId);
+
+	const rotated = plants.rotatePlantIngestToken(plantId);
+	assert.equal(typeof rotated?.ingestToken, "string");
+	assert.notEqual(rotated?.ingestToken, firstToken);
+
+	assert.equal(plants.verifyPlantIngestToken(plantId, firstToken), false);
+	assert.equal(plants.verifyPlantIngestToken(plantId, rotated.ingestToken), true);
+});
+
 test("supports history windows for week, month, and year", () => {
 	const plantId = "44444444-4444-4444-8444-444444444444";
 	plants.createPlant("Fern", plantId);
@@ -74,6 +86,30 @@ test("supports history windows for week, month, and year", () => {
 	assert.equal(month.readings.length, 3);
 	assert.equal(year.readings.length, 4);
 	assert.equal(last60.readings.length, 5);
+});
+
+test("caps ranged history to 60 evenly spread points", () => {
+	const plantId = "99999999-9999-4999-8999-999999999999";
+	plants.createPlant("Dense Week", plantId);
+
+	// 7 days of hourly readings => 168 points
+	for (let hour = 0; hour < 24 * 7; hour += 1) {
+		const receivedAt = new Date(Date.now() - ((24 * 7 - hour) * 60 * 60 * 1000)).toISOString();
+		plants.appendPlantReading(plantId, {
+			rawValue: 1000 + (hour % 250),
+			source: "sensor",
+			receivedAt,
+		});
+	}
+
+	const week = plants.listPlantReadings(plantId, 60, "week");
+	assert.equal(week.readings.length <= 60, true);
+	assert.equal(week.readings.length >= 40, true);
+
+	const firstTs = new Date(week.readings[0].receivedAt).getTime();
+	const lastTs = new Date(week.readings[week.readings.length - 1].receivedAt).getTime();
+	const spanHours = (lastTs - firstTs) / (60 * 60 * 1000);
+	assert.equal(spanHours > 72, true);
 });
 
 test("normalizes risky source input length", () => {

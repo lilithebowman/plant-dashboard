@@ -9,6 +9,7 @@ import {
 	createPlant,
 	updatePlant,
 	deletePlant,
+	rotatePlantIngestToken,
 	getMoistureEndpoint,
 	submitPlantReading,
 	type PlantHistoryRange,
@@ -53,6 +54,7 @@ export const PlantDashboard: React.FC = () => {
 	const [editThreshold, setEditThreshold] = useState(1500);
 	const [saving, setSaving] = useState(false);
 	const [deleting, setDeleting] = useState(false);
+	const [rotatingToken, setRotatingToken] = useState(false);
 	const [detailError, setDetailError] = useState<string | null>(null);
 	const [historyPlant, setHistoryPlant] = useState<Plant | null>(null);
 	const [historyReadings, setHistoryReadings] = useState<PlantReading[]>([]);
@@ -179,7 +181,7 @@ export const PlantDashboard: React.FC = () => {
 	};
 
 	const closeManage = () => {
-		if (saving || deleting) return;
+		if (saving || deleting || rotatingToken) return;
 		setSelectedPlantId(null);
 		setDetailError(null);
 	};
@@ -384,6 +386,30 @@ export const PlantDashboard: React.FC = () => {
 			setDetailError(`Failed to delete plant. ${message}`);
 		} finally {
 			setDeleting(false);
+		}
+	};
+
+	const handleRotateIngestToken = async () => {
+		if (!selectedPlantId) return;
+
+		setRotatingToken(true);
+		setDetailError(null);
+		try {
+			const result = await rotatePlantIngestToken(selectedPlantId, {
+				adminSessionToken: adminToken || undefined,
+			});
+
+			const currentPlant = plants.find((plant) => plant.id === selectedPlantId);
+			setNewIngestToken({
+				plantId: result.plantId,
+				plantName: currentPlant?.name ?? "Plant",
+				token: result.ingestToken,
+			});
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "Unknown error";
+			setDetailError(`Failed to rotate ingest token. ${message}`);
+		} finally {
+			setRotatingToken(false);
 		}
 	};
 
@@ -604,6 +630,14 @@ export const PlantDashboard: React.FC = () => {
 								<code className="modal-code">
 									{getMoistureEndpoint(selectedPlant.id)}
 								</code>
+								<button
+									type="button"
+									className="ghost-button"
+									onClick={handleRotateIngestToken}
+									disabled={saving || deleting || rotatingToken}
+								>
+									{rotatingToken ? "Rotating token..." : "Rotate ingest token"}
+								</button>
 							</div>
 
 							<div className="transport-panel">
@@ -680,14 +714,14 @@ export const PlantDashboard: React.FC = () => {
 							{detailError ? <p className="dashboard__error">{detailError}</p> : null}
 
 							<div className="modal-actions">
-								<button type="submit" className="add-plant-form__submit" disabled={saving || deleting}>
+								<button type="submit" className="add-plant-form__submit" disabled={saving || deleting || rotatingToken}>
 									{saving ? "Saving..." : "Save changes"}
 								</button>
 								<button
 									type="button"
 									className="modal-delete"
 									onClick={handleDelete}
-									disabled={saving || deleting}
+									disabled={saving || deleting || rotatingToken}
 								>
 									{deleting ? "Deleting..." : "Delete plant"}
 								</button>

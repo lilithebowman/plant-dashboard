@@ -175,6 +175,7 @@ The frontend uses these API endpoints:
 - `PATCH /api/plants/:plantId`
 - `DELETE /api/plants/:plantId`
 - `POST /api/plants/:plantId/readings`
+- `POST /api/plants/:plantId/ingest-token/rotate`
 - `GET /api/plants/:plantId/readings?limit=60`
 - `POST /api/admin/login`
 - `POST /api/admin/logout`
@@ -203,6 +204,7 @@ Reading ingestion rules:
 - `POST /api/plants/:plantId/readings` persists to SQLite only when a valid plant ingest token is provided.
 - Send ingest token in `X-Plant-Token: <ingestToken>` (recommended) or `Authorization: Bearer <ingestToken>`.
 - Tokenless/invalid-token posts are accepted only in legacy mode: they update the current live snapshot but are not stored in history.
+- Use `POST /api/plants/:plantId/ingest-token/rotate` (authorized owner/admin) to rotate a plant's ingest token; the previous token becomes invalid immediately.
 
 Admin auth setup:
 

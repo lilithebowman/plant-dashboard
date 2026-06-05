@@ -228,6 +228,28 @@ export async function submitPlantReading(
 	return mapApiPlant(data.plant);
 }
 
+export async function rotatePlantIngestToken(
+	plantId: string,
+	options?: { adminSessionToken?: string }
+): Promise<{ plantId: string; ingestToken: string }> {
+	const ownerToken = getPlantOwnerToken(plantId);
+	const headers: Record<string, string> = {};
+	if (ownerToken) {
+		headers.Authorization = `Bearer ${ownerToken}`;
+	}
+	if (options?.adminSessionToken) {
+		headers["X-Admin-Session"] = options.adminSessionToken;
+	}
+
+	return fetchJson<{ plantId: string; ingestToken: string }>(
+		apiUrl(`/api/plants/${plantId}/ingest-token/rotate`),
+		{
+			method: "POST",
+			headers,
+		}
+	);
+}
+
 export async function fetchPlantSnapshot(
 	plantId: string
 ): Promise<Partial<Plant>> {
