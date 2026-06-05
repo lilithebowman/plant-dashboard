@@ -1,5 +1,8 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,8 +28,21 @@ const app = express();
 const port = Number(process.env.PORT || 3001);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, "..", "dist");
+const adminLoginLimiter = rateLimit({
+	windowMs: 15 * 60 * 1000,
+	max: 10,
+	standardHeaders: true,
+	legacyHeaders: false,
+	message: { error: "Too many admin login attempts. Try again later." },
+});
 
 app.use(cors());
+app.use(
+	helmet({
+		contentSecurityPolicy: false,
+		crossOriginEmbedderPolicy: false,
+	})
+);
 app.use(express.json({ limit: "16kb" }));
 
 function getBearerToken(request) {
@@ -137,7 +153,7 @@ app.get("/api/plants/:plantId/readings", (request, response) => {
 	response.json(result);
 });
 
-app.post("/api/admin/login", (request, response) => {
+app.post("/api/admin/login", adminLoginLimiter, (request, response) => {
 	try {
 		const session = createAdminSession(request.body?.username, request.body?.password);
 		response.json({
@@ -213,6 +229,6 @@ app.listen(port, () => {
 		console.log(`Workshop mirror enabled -> ${process.env.WORKSHOP_MIRROR_BASE_URL}`);
 	}
 	if (!isAdminLoginEnabled()) {
-		console.warn("Admin login is disabled. Set ADMIN_PASSWORD to enable /api/admin/login.");
+		console.warn("Admin login is disabled. Set ADMIN_JWT_SECRET and ADMIN_PASSWORD_HASH (or ADMIN_PASSWORD) to enable /api/admin/login.");
 	}
 });

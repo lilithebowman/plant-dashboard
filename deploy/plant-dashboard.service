@@ -9,6 +9,10 @@ Group=www-data
 WorkingDirectory=/var/www/plants/plant-dashboard
 Environment=NODE_ENV=production
 Environment=PORT=3001
+Environment=ADMIN_USERNAME=admin
+Environment=ADMIN_PASSWORD_HASH=REPLACE_WITH_BCRYPT_HASH
+Environment=ADMIN_JWT_SECRET=REPLACE_WITH_LONG_RANDOM_SECRET
+Environment=ADMIN_SESSION_TTL_MS=28800000
 # Optional: mirror readings to the workshop server too.
 Environment=WORKSHOP_MIRROR_BASE_URL=https://codepub-nl.site
 Environment=WORKSHOP_MIRROR_TIMEOUT_MS=1500

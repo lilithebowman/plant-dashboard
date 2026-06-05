@@ -83,6 +83,26 @@ PORT=3001 npm run start
 
 To keep it running, use a process manager such as `pm2` or a `systemd` service.
 
+Important for admin login on VPS:
+
+- set `ADMIN_JWT_SECRET` to a long random value
+- set `ADMIN_PASSWORD_HASH` to a bcrypt hash (recommended)
+- optional `ADMIN_USERNAME` (defaults to `admin`)
+- optional `ADMIN_SESSION_TTL_MS` (defaults to 8 hours)
+
+Legacy fallback:
+
+- `ADMIN_PASSWORD` (plaintext) is still supported for local/dev use, but avoid it in production.
+
+If using `deploy/plant-dashboard.service`, set these values there (or via an `EnvironmentFile`) and restart the service.
+
+Generate secure values:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+node -e "console.log(require('bcryptjs').hashSync('your-admin-password', 12))"
+```
+
 Example with pm2:
 
 ```bash
@@ -159,7 +179,8 @@ Authorization rules:
 
 Admin auth setup:
 
-- set `ADMIN_PASSWORD` to enable admin login
+- set `ADMIN_JWT_SECRET` and `ADMIN_PASSWORD_HASH` to enable admin login in production
+- optional local/dev fallback: `ADMIN_PASSWORD`
 - optional `ADMIN_USERNAME` (default `admin`)
 - optional `ADMIN_SESSION_TTL_MS` (default 8 hours)
 
