@@ -1,18 +1,34 @@
-#include <HTTPClient.h>
-#include <WiFi.h>
+// Test plant ab8ed7e8-172c-476c-bc34-4ca0fa11cfe5
 
-const int analogPin = 36;
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h>
+
+const int analogPin = A0;
 const unsigned long sampleDelayMs = 750;
 const uint16_t httpTimeoutMs = 1000;
 
-const char* plantIngestToken = ""; // One-time ingest token from dashboard (rotate to replace)
+const char* plantId = ""; // get your plant ID and ingest token from the dashboard
+const char* plantIngestToken = "";
 
-const char* wifiSsid = ""; // Add your Wifi details here
-const char* wifiPassword = "!";
+const char* wifiSsid = ""; // Your WiFi details go here
+const char* wifiPassword = "";
 
+const char* serverBaseUrl = ""; // the server to send data updates to
 
-const char* plantId = ""; // get your plant ID from the dashboard
-const char* serverBaseUrl = ""; // if left blank, it will use localhost
+// ------------------------------
+// Offline Buffer
+// ------------------------------
+static const int MAX_BUFFERED = 40;   // fits safely in ESP8266 RAM
+int bufferedValues[MAX_BUFFERED];
+int bufferCount = 0;
+
+// Exponential backoff (ms)
+unsigned long nextRetryAt = 0;
+unsigned long backoffDelay = 2000;  // starts at 2s
+const unsigned long maxBackoff = 60000; // caps at 60s
+
+// ------------------------------
 
 bool networkConfigured() {
   return wifiSsid[0] != '\0' &&
@@ -27,11 +43,7 @@ bool ingestTokenConfigured() {
 
 String readingUrl() {
   String baseUrl = String(serverBaseUrl);
-
-  if (baseUrl.endsWith("/")) {
-    baseUrl.remove(baseUrl.length() - 1);
-  }
-
+  if (baseUrl.endsWith("/")) baseUrl.remove(baseUrl.length() - 1);
   return baseUrl + "/api/plants/" + String(plantId) + "/readings";
 }
 
@@ -41,9 +53,7 @@ void logNetworkMessage(const char* message) {
 }
 
 void startWifiIfConfigured() {
-  if (!networkConfigured()) {
-    return;
-  }
+  if (!networkConfigured()) return;
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(wifiSsid, wifiPassword);
@@ -52,34 +62,108 @@ void startWifiIfConfigured() {
   Serial.println(wifiSsid);
 }
 
-void postReadingIfConnected(int rawValue) {
-  if (!networkConfigured() || WiFi.status() != WL_CONNECTED) {
-    return;
+// ------------------------------
+// Buffer Management
+// ------------------------------
+
+void bufferValue(int rawValue) {
+  if (bufferCount < MAX_BUFFERED) {
+    bufferedValues[bufferCount++] = rawValue;
+    Serial.print("[buf] Stored offline reading. Count=");
+    Serial.println(bufferCount);
+  } else {
+    Serial.println("[buf] Buffer full; dropping oldest");
+    for (int i = 1; i < MAX_BUFFERED; i++) {
+      bufferedValues[i - 1] = bufferedValues[i];
+    }
+    bufferedValues[MAX_BUFFERED - 1] = rawValue;
   }
+}
+
+bool sendReading(int rawValue) {
+  WiFiClientSecure client;
+  client.setInsecure();  // allow HTTPS without certificate
 
   HTTPClient http;
-  http.setConnectTimeout(httpTimeoutMs);
   http.setTimeout(httpTimeoutMs);
-  http.begin(readingUrl());
-  http.addHeader("Content-Type", "application/json");
+  http.begin(client, readingUrl());
 
+  http.addHeader("Content-Type", "application/json");
   if (ingestTokenConfigured()) {
     http.addHeader("X-Plant-Token", plantIngestToken);
     http.addHeader("Authorization", "Bearer " + String(plantIngestToken));
   }
 
-  const String payload =
-      "{\"rawValue\":" + String(rawValue) + ",\"source\":\"esp32-wifi\"}";
+  String payload =
+      "{\"rawValue\":" + String(rawValue) + ",\"source\":\"esp8266-wifi\"}";
 
-  const int responseCode = http.POST(payload);
+  int responseCode = http.POST(payload);
+  http.end();
 
-  if (responseCode <= 0 || responseCode >= 400) {
-    Serial.print("[net] API post failed: ");
-    Serial.println(responseCode);
+  if (responseCode > 0 && responseCode < 400) {
+    Serial.print("[net] Sent reading OK: ");
+    Serial.println(rawValue);
+    return true;
   }
 
-  http.end();
+  Serial.print("[net] Send failed: ");
+  Serial.println(responseCode);
+  return false;
 }
+
+void flushBufferIfPossible() {
+  if (bufferCount == 0) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  unsigned long now = millis();
+  if (now < nextRetryAt) return;
+
+  Serial.print("[buf] Attempting flush of ");
+  Serial.print(bufferCount);
+  Serial.println(" readings");
+
+  int i = 0;
+  while (i < bufferCount) {
+    if (!sendReading(bufferedValues[i])) {
+      Serial.println("[buf] Flush failed; applying backoff");
+
+      nextRetryAt = now + backoffDelay;
+      backoffDelay = min(backoffDelay * 2, maxBackoff);
+      return;
+    }
+
+    // Shift remaining values down
+    for (int j = i + 1; j < bufferCount; j++) {
+      bufferedValues[j - 1] = bufferedValues[j];
+    }
+    bufferCount--;
+  }
+
+  Serial.println("[buf] Flush complete; resetting backoff");
+  backoffDelay = 2000;
+  nextRetryAt = 0;
+}
+
+// ------------------------------
+
+void postReadingIfConnected(int rawValue) {
+  if (!networkConfigured()) return;
+
+  if (WiFi.status() != WL_CONNECTED) {
+    bufferValue(rawValue);
+    return;
+  }
+
+  // Try to flush old data first
+  flushBufferIfPossible();
+
+  // Now send the new reading
+  if (!sendReading(rawValue)) {
+    bufferValue(rawValue);
+  }
+}
+
+// ------------------------------
 
 void setup() {
   Serial.begin(115200);
@@ -98,8 +182,7 @@ void setup() {
 }
 
 void loop() {
-  const int rawValue = analogRead(analogPin);
-
+  int rawValue = analogRead(analogPin);
   Serial.println(rawValue);
 
   postReadingIfConnected(rawValue);
