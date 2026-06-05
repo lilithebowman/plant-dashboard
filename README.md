@@ -35,6 +35,26 @@ Local persistence details:
 - API server: <http://localhost:3001>
 - Frontend dev server: <http://localhost:5173>
 
+## Testing
+
+Run all tests:
+
+```bash
+npm test
+```
+
+Run backend unit/security tests only:
+
+```bash
+npm run test:server
+```
+
+Run frontend unit/security tests only:
+
+```bash
+npm run test:client
+```
+
 ## Production build
 
 Build the frontend bundle:
