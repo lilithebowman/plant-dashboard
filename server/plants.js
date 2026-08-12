@@ -1,10 +1,9 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { getDb } from "./db.js";
 
-const DEFAULT_WET_THRESHOLD = 1500;
-const MIN_WET_THRESHOLD = 500;
-const MAX_WET_THRESHOLD = 2049;
 const DRY_VALUE = 4095;
+const DEFAULT_LOWER_RAW_READING = DRY_VALUE;
+const DEFAULT_UPPER_RAW_READING = 1500;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const legacyLatestReadings = new Map();
 
@@ -63,12 +62,63 @@ function constantTimeHashEquals(leftHash, rightHash) {
 	return timingSafeEqual(left, right);
 }
 
-function sanitizeWetThreshold(wetThreshold = DEFAULT_WET_THRESHOLD) {
-	const numericValue = Number(wetThreshold);
+function sanitizeCalibrationRawValue(rawValue, fallback) {
+	const numericValue = Number(rawValue);
 	if (!Number.isFinite(numericValue)) {
-		return DEFAULT_WET_THRESHOLD;
+		return fallback;
 	}
-	return clamp(Math.round(numericValue), MIN_WET_THRESHOLD, MAX_WET_THRESHOLD);
+	return clamp(Math.round(numericValue), 0, DRY_VALUE);
+}
+
+function sanitizeCalibrationBounds(bounds = {}) {
+	const lowerRawReading = sanitizeCalibrationRawValue(
+		bounds.lowerRawReading,
+		DEFAULT_LOWER_RAW_READING
+	);
+	const upperRawReading = sanitizeCalibrationRawValue(
+		bounds.upperRawReading,
+		DEFAULT_UPPER_RAW_READING
+	);
+
+	if (lowerRawReading === upperRawReading) {
+		throw new Error("`lowerRawReading` and `upperRawReading` must be different values");
+	}
+
+	return {
+		lowerRawReading,
+		upperRawReading,
+	};
+}
+
+function sanitizeCalibrationBoundsFromUpdate(updates = {}, current) {
+	const hasLower = typeof updates.lowerRawReading !== "undefined";
+	const hasUpper = typeof updates.upperRawReading !== "undefined";
+
+	if (!hasLower && !hasUpper && typeof updates.wetThreshold !== "undefined") {
+		return {
+			lowerRawReading: DEFAULT_LOWER_RAW_READING,
+			upperRawReading: sanitizeCalibrationRawValue(
+				updates.wetThreshold,
+				DEFAULT_UPPER_RAW_READING
+			),
+		};
+	}
+
+	const lowerRawReading = hasLower
+		? sanitizeCalibrationRawValue(updates.lowerRawReading, current.lowerRawReading)
+		: current.lowerRawReading;
+	const upperRawReading = hasUpper
+		? sanitizeCalibrationRawValue(updates.upperRawReading, current.upperRawReading)
+		: current.upperRawReading;
+
+	if (lowerRawReading === upperRawReading) {
+		throw new Error("`lowerRawReading` and `upperRawReading` must be different values");
+	}
+
+	return {
+		lowerRawReading,
+		upperRawReading,
+	};
 }
 
 function sanitizeSource(source) {
@@ -125,28 +175,27 @@ function downsampleReadingsByWindow(rows, windowStartIso, maxPoints = 60) {
 	return buckets.filter(Boolean);
 }
 
-function mapRawToPercent(rawValue, wetThreshold = DEFAULT_WET_THRESHOLD) {
+function mapRawToPercent(rawValue, lowerRawReading, upperRawReading) {
 	const normalizedRawValue = normalizeRawValue(rawValue);
 	if (normalizedRawValue === null) {
 		return null;
 	}
-	const normalizedWetThreshold = sanitizeWetThreshold(wetThreshold);
-	const range = DRY_VALUE - normalizedWetThreshold;
-	if (range <= 0) {
-		return normalizedRawValue <= normalizedWetThreshold ? 100 : 0;
+	const range = upperRawReading - lowerRawReading;
+	if (range === 0) {
+		return null;
 	}
-	return clamp(
-		((DRY_VALUE - normalizedRawValue) / range) * 100,
-		0,
-		100
-	);
+	return clamp(((normalizedRawValue - lowerRawReading) / range) * 100, 0, 100);
 }
 
-function decorateReading(reading, wetThreshold) {
+function decorateReading(reading, lowerRawReading, upperRawReading) {
 	if (!reading) {
 		return null;
 	}
-	const moisturePercent = mapRawToPercent(reading.rawValue, wetThreshold);
+	const moisturePercent = mapRawToPercent(
+		reading.rawValue,
+		lowerRawReading,
+		upperRawReading
+	);
 	return {
 		...reading,
 		moisturePercent:
@@ -155,7 +204,10 @@ function decorateReading(reading, wetThreshold) {
 }
 
 function mapPlantSummary(row) {
-	const wetThreshold = sanitizeWetThreshold(row.wetThreshold);
+	const calibration = sanitizeCalibrationBounds({
+		lowerRawReading: row.lowerRawReading,
+		upperRawReading: row.upperRawReading,
+	});
 	const latestReading = row.latestRawValue == null
 		? null
 		: decorateReading(
@@ -164,13 +216,15 @@ function mapPlantSummary(row) {
 				source: row.latestSource || "api",
 				receivedAt: row.latestReceivedAt,
 			},
-			wetThreshold
+			calibration.lowerRawReading,
+			calibration.upperRawReading
 		);
 
 	return {
 		id: row.id,
 		name: row.name,
-		wetThreshold,
+		lowerRawReading: calibration.lowerRawReading,
+		upperRawReading: calibration.upperRawReading,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 		latestReading,
@@ -206,7 +260,8 @@ function getPlantSummaryRow(plantId) {
 		SELECT
 			p.id,
 			p.name,
-			p.wet_threshold AS wetThreshold,
+			p.lower_raw_reading AS lowerRawReading,
+			p.upper_raw_reading AS upperRawReading,
 			p.created_at AS createdAt,
 			p.updated_at AS updatedAt,
 			r.raw_value AS latestRawValue,
@@ -229,7 +284,8 @@ export function listPlants() {
 		SELECT
 			p.id,
 			p.name,
-			p.wet_threshold AS wetThreshold,
+			p.lower_raw_reading AS lowerRawReading,
+			p.upper_raw_reading AS upperRawReading,
 			p.created_at AS createdAt,
 			p.updated_at AS updatedAt,
 			r.raw_value AS latestRawValue,
@@ -259,12 +315,17 @@ export function getPlant(plantId) {
 	};
 }
 
-export function createPlant(name, plantId) {
+export function createPlant(name, plantId, options = {}) {
 	const db = getDb();
 	const id = sanitizePlantId(plantId);
 	const normalizedName = sanitizePlantName(name);
 	const now = new Date().toISOString();
-	const wetThreshold = DEFAULT_WET_THRESHOLD;
+	const calibration = sanitizeCalibrationBounds({
+		lowerRawReading: options.lowerRawReading,
+		upperRawReading: typeof options.upperRawReading === "undefined"
+			? options.wetThreshold
+			: options.upperRawReading,
+	});
 	const ownerToken = createOwnerToken();
 	const ownerTokenHash = hashToken(ownerToken);
 
@@ -274,9 +335,16 @@ export function createPlant(name, plantId) {
 	}
 
 	db.prepare(`
-		INSERT INTO plants (id, name, wet_threshold, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
-	`).run(id, normalizedName, wetThreshold, now, now);
+		INSERT INTO plants (id, name, lower_raw_reading, upper_raw_reading, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`).run(
+		id,
+		normalizedName,
+		calibration.lowerRawReading,
+		calibration.upperRawReading,
+		now,
+		now
+	);
 
 	db.prepare(`
 		INSERT INTO plant_owner_tokens (plant_id, token_hash, created_at, last_used_at)
@@ -339,19 +407,29 @@ export function updatePlant(plantId, updates) {
 	const nextName = typeof updates.name === "undefined"
 		? undefined
 		: sanitizePlantName(updates.name);
-	const nextWetThreshold = typeof updates.wetThreshold === "undefined"
-		? undefined
-		: sanitizeWetThreshold(updates.wetThreshold);
 
-	const current = db.prepare(`SELECT name, wet_threshold as wetThreshold FROM plants WHERE id = ?`).get(plantId);
+	const current = db.prepare(`
+		SELECT
+			name,
+			lower_raw_reading as lowerRawReading,
+			upper_raw_reading as upperRawReading
+		FROM plants
+		WHERE id = ?
+	`).get(plantId);
+	const nextCalibration = sanitizeCalibrationBoundsFromUpdate(updates, current);
 	const finalName = typeof nextName === "undefined" ? current.name : nextName;
-	const finalWetThreshold = typeof nextWetThreshold === "undefined" ? current.wetThreshold : nextWetThreshold;
 
 	db.prepare(`
 		UPDATE plants
-		SET name = ?, wet_threshold = ?, updated_at = ?
+		SET name = ?, lower_raw_reading = ?, upper_raw_reading = ?, updated_at = ?
 		WHERE id = ?
-	`).run(finalName, finalWetThreshold, new Date().toISOString(), plantId);
+	`).run(
+		finalName,
+		nextCalibration.lowerRawReading,
+		nextCalibration.upperRawReading,
+		new Date().toISOString(),
+		plantId
+	);
 
 	return getPlant(plantId);
 }
@@ -422,7 +500,15 @@ export function deletePlant(plantId) {
 
 export function appendPlantReading(plantId, payload, options = {}) {
 	const db = getDb();
-	const plant = db.prepare(`SELECT id, wet_threshold as wetThreshold FROM plants WHERE id = ? LIMIT 1`).get(plantId);
+	const plant = db.prepare(`
+		SELECT
+			id,
+			lower_raw_reading as lowerRawReading,
+			upper_raw_reading as upperRawReading
+		FROM plants
+		WHERE id = ?
+		LIMIT 1
+	`).get(plantId);
 	if (!plant) {
 		return null;
 	}
@@ -435,7 +521,11 @@ export function appendPlantReading(plantId, payload, options = {}) {
 	const source = sanitizeSource(payload.source);
 	const receivedAt = normalizeReceivedAt(payload.receivedAt);
 	const shouldPersist = options.persist !== false;
-	const reading = decorateReading({ rawValue, source, receivedAt }, plant.wetThreshold);
+	const reading = decorateReading(
+		{ rawValue, source, receivedAt },
+		plant.lowerRawReading,
+		plant.upperRawReading
+	);
 
 	if (!shouldPersist) {
 		legacyLatestReadings.set(plantId, reading);
@@ -493,6 +583,6 @@ export function listPlantReadings(plantId, limit = 60, range) {
 	return {
 		plant: applyLegacyLatestReading(plant),
 		readings: rows
-			.map((row) => decorateReading(row, plant.wetThreshold)),
+			.map((row) => decorateReading(row, plant.lowerRawReading, plant.upperRawReading)),
 	};
 }

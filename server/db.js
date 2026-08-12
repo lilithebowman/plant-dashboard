@@ -13,7 +13,8 @@ const createPlantsTable = `
 	CREATE TABLE IF NOT EXISTS plants (
 		id TEXT PRIMARY KEY,
 		name TEXT NOT NULL,
-		wet_threshold INTEGER NOT NULL DEFAULT 1500,
+		lower_raw_reading INTEGER NOT NULL DEFAULT 4095,
+		upper_raw_reading INTEGER NOT NULL DEFAULT 1500,
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)
@@ -58,6 +59,33 @@ const createPlantIngestTokensTable = `
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA foreign_keys = ON;");
 db.exec(createPlantsTable);
+
+const plantColumns = db.prepare("PRAGMA table_info(plants)").all();
+const hasLowerRawReading = plantColumns.some((column) => column.name === "lower_raw_reading");
+const hasUpperRawReading = plantColumns.some((column) => column.name === "upper_raw_reading");
+const hasWetThreshold = plantColumns.some((column) => column.name === "wet_threshold");
+let addedLowerRawReading = false;
+let addedUpperRawReading = false;
+
+if (!hasLowerRawReading) {
+	db.exec("ALTER TABLE plants ADD COLUMN lower_raw_reading INTEGER NOT NULL DEFAULT 4095");
+	addedLowerRawReading = true;
+}
+
+if (!hasUpperRawReading) {
+	db.exec("ALTER TABLE plants ADD COLUMN upper_raw_reading INTEGER NOT NULL DEFAULT 1500");
+	addedUpperRawReading = true;
+}
+
+if (hasWetThreshold && (addedLowerRawReading || addedUpperRawReading)) {
+	db.exec(`
+		UPDATE plants
+		SET
+			lower_raw_reading = 4095,
+			upper_raw_reading = wet_threshold
+	`);
+}
+
 db.exec(createReadingsTable);
 db.exec(createReadingsIndex);
 db.exec(createPlantOwnerTokensTable);

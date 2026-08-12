@@ -51,7 +51,8 @@ export const PlantDashboard: React.FC = () => {
 	const [error, setError] = useState<string | null>(null);
 	const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
 	const [editName, setEditName] = useState("");
-	const [editThreshold, setEditThreshold] = useState(1500);
+	const [editLowerRawReading, setEditLowerRawReading] = useState(4095);
+	const [editUpperRawReading, setEditUpperRawReading] = useState(1500);
 	const [saving, setSaving] = useState(false);
 	const [deleting, setDeleting] = useState(false);
 	const [rotatingToken, setRotatingToken] = useState(false);
@@ -98,7 +99,12 @@ export const PlantDashboard: React.FC = () => {
 		})();
 	}, [loadPlants]);
 
-	const handleCreate = async (data: { name: string; uuid: string }) => {
+	const handleCreate = async (data: {
+		name: string;
+		uuid: string;
+		lowerRawReading: number;
+		upperRawReading: number;
+	}) => {
 		try {
 			const result = await createPlant(data);
 			setPlants((prev) => [result.plant, ...prev]);
@@ -137,7 +143,8 @@ export const PlantDashboard: React.FC = () => {
 	const openManage = (plant: Plant) => {
 		setSelectedPlantId(plant.id);
 		setEditName(plant.name);
-		setEditThreshold(plant.wetThreshold);
+		setEditLowerRawReading(plant.lowerRawReading);
+		setEditUpperRawReading(plant.upperRawReading);
 		setDetailError(null);
 	};
 
@@ -348,9 +355,16 @@ export const PlantDashboard: React.FC = () => {
 		setSaving(true);
 		setDetailError(null);
 		try {
+			if (editLowerRawReading === editUpperRawReading) {
+				setDetailError("Lower and upper raw readings must be different.");
+				setSaving(false);
+				return;
+			}
+
 			const updated = await updatePlant(selectedPlantId, {
 				name: editName,
-				wetThreshold: editThreshold,
+				lowerRawReading: editLowerRawReading,
+				upperRawReading: editUpperRawReading,
 			}, {
 				adminSessionToken: adminToken || undefined,
 			});
@@ -479,6 +493,11 @@ export const PlantDashboard: React.FC = () => {
 		activeUsbPlant && selectedPlant && activeUsbPlant.id !== selectedPlant.id
 			? `USB is currently attached to ${activeUsbPlant.name}. Connecting here will switch the stream.`
 			: "";
+
+	const calibrationDirection =
+		editUpperRawReading > editLowerRawReading
+			? "Normal scale: higher raw = wetter"
+			: "Inverted scale: lower raw = wetter";
 
 	return (
 		<div className="dashboard">
@@ -674,21 +693,32 @@ export const PlantDashboard: React.FC = () => {
 
 							<div className="modal-field">
 								<div className="modal-field-row">
-									<span>Wet threshold</span>
-									<strong>{editThreshold}</strong>
+									<span>Lower raw reading (0%)</span>
+									<strong>{editLowerRawReading}</strong>
 								</div>
 								<input
-									type="range"
-									min={500}
-									max={2049}
-									step={1}
-									value={editThreshold}
-									onChange={(e) => setEditThreshold(Number(e.target.value))}
+									type="number"
+									min={0}
+									max={4095}
+									value={editLowerRawReading}
+									onChange={(e) => setEditLowerRawReading(Math.max(0, Math.min(4095, Number(e.target.value) || 0)))}
+								/>
+							</div>
+
+							<div className="modal-field">
+								<div className="modal-field-row">
+									<span>Upper raw reading (100%)</span>
+									<strong>{editUpperRawReading}</strong>
+								</div>
+								<input
+									type="number"
+									min={0}
+									max={4095}
+									value={editUpperRawReading}
+									onChange={(e) => setEditUpperRawReading(Math.max(0, Math.min(4095, Number(e.target.value) || 0)))}
 								/>
 								<div className="modal-scale">
-									<span>500</span>
-									<span>Default 1500</span>
-									<span>2049</span>
+									<span>{calibrationDirection}</span>
 								</div>
 							</div>
 
@@ -714,7 +744,7 @@ export const PlantDashboard: React.FC = () => {
 							{detailError ? <p className="dashboard__error">{detailError}</p> : null}
 
 							<div className="modal-actions">
-								<button type="submit" className="add-plant-form__submit" disabled={saving || deleting || rotatingToken}>
+								<button type="submit" className="add-plant-form__submit" disabled={saving || deleting || rotatingToken || editLowerRawReading === editUpperRawReading}>
 									{saving ? "Saving..." : "Save changes"}
 								</button>
 								<button

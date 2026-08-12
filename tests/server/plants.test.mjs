@@ -30,6 +30,8 @@ test("creates plants and validates unsafe or invalid input", () => {
 	const result = plants.createPlant("  Aloe Vera  ", plantId);
 
 	assert.equal(result.plant.name, "Aloe Vera");
+	assert.equal(result.plant.lowerRawReading, 4095);
+	assert.equal(result.plant.upperRawReading, 1500);
 	assert.equal(typeof result.creatorToken, "string");
 	assert.equal(typeof result.ingestToken, "string");
 	assert.throws(() => plants.createPlant("x", "not-a-uuid"), /valid UUID/);
@@ -37,6 +39,39 @@ test("creates plants and validates unsafe or invalid input", () => {
 		() => plants.createPlant("x".repeat(61), "22222222-2222-4222-8222-222222222222"),
 		/60 characters or fewer/
 	);
+	assert.throws(
+		() => plants.createPlant("Equal bounds", "22222222-2222-4222-8222-333333333333", {
+			lowerRawReading: 1800,
+			upperRawReading: 1800,
+		}),
+		/different values/
+	);
+});
+
+test("calculates moisture percent using lower/upper calibration and supports inverted readings", () => {
+	const normalPlantId = "12345678-1234-4234-8234-123456789abc";
+	plants.createPlant("Normal Sensor", normalPlantId, {
+		lowerRawReading: 500,
+		upperRawReading: 3500,
+	});
+
+	const normalReading = plants.appendPlantReading(normalPlantId, {
+		rawValue: 2000,
+		source: "sensor",
+	});
+	assert.equal(normalReading.reading.moisturePercent, 50);
+
+	const invertedPlantId = "abcdefab-cdef-4def-8def-abcdefabcdef";
+	plants.createPlant("Inverted Sensor", invertedPlantId, {
+		lowerRawReading: 3500,
+		upperRawReading: 500,
+	});
+
+	const invertedReading = plants.appendPlantReading(invertedPlantId, {
+		rawValue: 2000,
+		source: "sensor",
+	});
+	assert.equal(invertedReading.reading.moisturePercent, 50);
 });
 
 test("accepts only valid owner token for write authorization", () => {

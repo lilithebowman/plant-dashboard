@@ -4,11 +4,14 @@ import { Plant, PlantReading } from "../types/plant";
 type CreatePlantInput = {
 	name: string;
 	uuid: string;
+	lowerRawReading: number;
+	upperRawReading: number;
 };
 
 type UpdatePlantInput = {
 	name: string;
-	wetThreshold: number;
+	lowerRawReading: number;
+	upperRawReading: number;
 };
 
 type ApiReading = {
@@ -21,6 +24,8 @@ type ApiReading = {
 type ApiPlant = {
 	id: string;
 	name: string;
+	lowerRawReading?: number;
+	upperRawReading?: number;
 	wetThreshold?: number;
 	latestReading?: ApiReading | null;
 };
@@ -56,7 +61,8 @@ function mapApiPlant(input: ApiPlant): Plant {
 		id: input.id,
 		name: input.name,
 		uuid: input.id,
-		wetThreshold: input.wetThreshold ?? 1500,
+		lowerRawReading: input.lowerRawReading ?? 4095,
+		upperRawReading: input.upperRawReading ?? input.wetThreshold ?? 1500,
 		moisture: input.latestReading?.moisturePercent ?? null,
 		lastUpdated: input.latestReading?.receivedAt ?? null,
 		latestRawValue: input.latestReading?.rawValue ?? null,
@@ -135,11 +141,18 @@ export async function fetchPlants(): Promise<Plant[]> {
 export async function createPlant(input: CreatePlantInput): Promise<{ plant: Plant; ingestToken: string | null }> {
 	const normalizedName = input.name.trim();
 	const normalizedUuid = input.uuid.trim();
+	const lowerRawReading = Math.max(0, Math.min(4095, Math.round(input.lowerRawReading)));
+	const upperRawReading = Math.max(0, Math.min(4095, Math.round(input.upperRawReading)));
 	const data = await fetchJson<ApiCreatePlantResult | { plant: ApiPlant } | ApiPlant>(
 		apiUrl("/api/plants"),
 		{
 			method: "POST",
-			body: JSON.stringify({ name: normalizedName, id: normalizedUuid }),
+			body: JSON.stringify({
+				name: normalizedName,
+				id: normalizedUuid,
+				lowerRawReading,
+				upperRawReading,
+			}),
 		}
 	);
 
@@ -164,7 +177,8 @@ export async function updatePlant(
 ): Promise<Plant> {
 	const payload = {
 		name: updates.name.trim(),
-		wetThreshold: updates.wetThreshold,
+		lowerRawReading: Math.max(0, Math.min(4095, Math.round(updates.lowerRawReading))),
+		upperRawReading: Math.max(0, Math.min(4095, Math.round(updates.upperRawReading))),
 	};
 	const ownerToken = getPlantOwnerToken(plantId);
 	const headers: Record<string, string> = {};

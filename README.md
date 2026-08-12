@@ -235,4 +235,4 @@ SQLite tables created automatically on first boot:
 - `plants`
 - `readings`
 
-The server stores every reading historically and calculates moisture percentage from raw sensor values using the plant's wet threshold.
+The server stores every reading historically and calculates moisture percentage from raw sensor values using each plant's lower and upper calibration readings.

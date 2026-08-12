@@ -30,6 +30,7 @@ const app = express();
 const port = Number(process.env.PORT || 3001);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, "..", "dist");
+app.disable("x-powered-by");
 const adminLoginLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000,
 	max: 10,
@@ -95,7 +96,11 @@ app.get("/api/plants", (_request, response) => {
 
 app.post("/api/plants", (request, response) => {
 	try {
-		const result = createPlant(request.body?.name, request.body?.id);
+		const result = createPlant(request.body?.name, request.body?.id, {
+			lowerRawReading: request.body?.lowerRawReading,
+			upperRawReading: request.body?.upperRawReading,
+			wetThreshold: request.body?.wetThreshold,
+		});
 		response.status(201).json(result);
 	} catch (error) {
 		sendError(response, error);

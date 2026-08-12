@@ -17,7 +17,8 @@ describe("api header handling", () => {
 				plant: {
 					id: "11111111-1111-4111-8111-111111111111",
 					name: "Renamed Plant",
-					wetThreshold: 1500,
+					lowerRawReading: 4095,
+					upperRawReading: 1500,
 					latestReading: null,
 				},
 			}),
@@ -28,7 +29,8 @@ describe("api header handling", () => {
 
 		await updatePlant(plantId, {
 			name: "Renamed Plant",
-			wetThreshold: 1500,
+			lowerRawReading: 4095,
+			upperRawReading: 1500,
 		});
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
