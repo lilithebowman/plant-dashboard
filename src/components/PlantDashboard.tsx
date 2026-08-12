@@ -692,6 +692,7 @@ export const PlantDashboard: React.FC = () => {
 							</div>
 
 							<div className="modal-field">
+								<span>Calibration</span>
 								<div className="modal-field-row">
 									<span>Lower raw reading (0%)</span>
 									<strong>{editLowerRawReading}</strong>
@@ -720,6 +721,9 @@ export const PlantDashboard: React.FC = () => {
 								<div className="modal-scale">
 									<span>{calibrationDirection}</span>
 								</div>
+								<p className="modal-field-help">
+									Set the dry-end and wet-end raw values from your sensor. The app maps between them to compute moisture percentage.
+								</p>
 							</div>
 
 							<div className="modal-metrics">

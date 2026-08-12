@@ -41,6 +41,7 @@ export const PlantCard: React.FC<Props> = ({ plant, onManage, onOpenHistory }) =
 
 	const moistureLabel =
 		snapshot.moisture == null ? "--" : `${snapshot.moisture}%`;
+	const isInverted = snapshot.lowerRawReading > snapshot.upperRawReading;
 
 	return (
 		<div
@@ -76,6 +77,11 @@ export const PlantCard: React.FC<Props> = ({ plant, onManage, onOpenHistory }) =
 			<p className="plant-card__updated">{updatedLabel}</p>
 
 			<div className="plant-card__moisture">{moistureLabel}</div>
+
+			<p className="plant-card__calibration">
+				Calibration: 0%={snapshot.lowerRawReading} 100%={snapshot.upperRawReading}
+				{isInverted ? " (inverted)" : ""}
+			</p>
 
 			<div className="plant-card__footer">
 				<span className="plant-card__snapshot-label">
